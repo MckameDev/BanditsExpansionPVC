@@ -146,6 +146,29 @@ end
 -- desde arriba y se leeria como global nil.
 local reported = false
 
+-- ---------------------------------------------------------------------------
+-- Respaldo de brain para el momento de la muerte
+-- ---------------------------------------------------------------------------
+-- BUG REAL encontrado en el log (ver TacticalAsymmetric.lua/"La Ultima
+-- Risa" que jamas disparaba): Bandits2 (media/lua/client/BanditUpdate.lua,
+-- funcion OnZombieDead, ~linea 2349) llama BanditBrain.Remove(bandit) --
+-- que pone modData.brain = nil -- DENTRO de su propio Events.OnZombieDead.
+-- Como Bandits2 es el mod requerido, sus archivos cargan y registran ese
+-- handler ANTES que los nuestros, y Kahlua invoca los handlers de un mismo
+-- evento en orden de registro. O sea: para cuando llega nuestro
+-- Events.OnZombieDead, BanditBrain.Get(zombie) YA da nil siempre, y todo lo
+-- que dependia de la muerte (Furia de Team PVC, limpieza de TeamPVC,
+-- La Ultima Risa de Evaristo) se saltaba en silencio -- sin error, porque
+-- "if not brain then return end" simplemente corta ahi.
+-- Arreglo: guardamos la ULTIMA copia de brain vista con vida (se actualiza
+-- en cada OnZombieUpdate, que corre constantemente mientras el bandido esta
+-- vivo) y la usamos como respaldo si la muerte ya la borro. La clave es
+-- zombie:getPersistentOutfitID() -- el mismo valor crudo que Bandits2 usa
+-- para fijar brain.id al crear el bandido (server/BanditServerSpawner.lua,
+-- banditize()), y que sigue siendo legible en el zombi aunque modData.brain
+-- ya no exista.
+local lastBrainById = {}
+
 local function OnZombieUpdate(zombie)
     if isServer() then return end
     if updateCount == 0 then return end
@@ -164,6 +187,8 @@ local function OnZombieUpdate(zombie)
     if not brain then return end
     local id = brain.id
     if not id then return end
+
+    lastBrainById[id] = brain -- respaldo para OnZombieDead, ver la nota larga mas arriba
 
     local now = getTimestampMs()
 
@@ -210,9 +235,19 @@ local function OnZombieDead(zombie)
     if deadCount == 0 then return end
     if not zombie:getVariableBoolean("Bandit") then return end
 
+    -- Bandits2 ya pudo haber borrado modData.brain en su propio handler de
+    -- este mismo evento (ver la nota larga junto a lastBrainById): si es
+    -- asi, recuperamos la ultima copia vista con vida en vez de rendirnos.
     local brain = BanditBrain.Get(zombie)
-    if not brain then return end
-    local id = brain.id
+    local id
+    if brain then
+        id = brain.id
+    else
+        local ok, outfitId = pcall(zombie.getPersistentOutfitID, zombie)
+        id = ok and outfitId or nil
+        brain = id and lastBrainById[id]
+    end
+    if not brain or not id then return end
 
     for i = 1, deadCount do
         local h = deadFns[i]
@@ -220,6 +255,20 @@ local function OnZombieDead(zombie)
             local ok, err = pcall(h.fn, zombie, brain, id)
             if not ok then Report(h.name, err) end
         end
+    end
+
+    lastBrainById[id] = nil
+end
+
+-- Barrido de baja frecuencia: bandidos que jamas pasaron por nuestro
+-- OnZombieDead (ej. chunk descargado para siempre) no deberian dejar su
+-- respaldo en lastBrainById creciendo sin limite durante una partida larga.
+local function CleanupBrainCache()
+    if type(BanditZombie) ~= "table" or type(BanditZombie.GetAllB) ~= "function" then return end
+    local alive = BanditZombie.GetAllB()
+    if not alive then return end
+    for id in pairs(lastBrainById) do
+        if not alive[id] then lastBrainById[id] = nil end
     end
 end
 
@@ -242,6 +291,9 @@ local function Bootstrap()
 
     Events.OnZombieDead.Remove(OnZombieDead)
     Events.OnZombieDead.Add(OnZombieDead)
+
+    Events.EveryHours.Remove(CleanupBrainCache)
+    Events.EveryHours.Add(CleanupBrainCache)
 
     PVCCore.Ready = true
 

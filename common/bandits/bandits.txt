@@ -124,7 +124,7 @@
 [9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105]
 	general: modid = BanditsExpansionPVC
 	general: cid = 9f1c7a20-b9c0-4e11-9a3d-7ea55c0de001
-	general: name = Evaristo_Wazy
+	general: name = Evaristo_Brea
 	general: female = false
 	general: skin = 2
 	general: hairType = 27

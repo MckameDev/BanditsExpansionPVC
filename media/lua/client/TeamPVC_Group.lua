@@ -56,6 +56,25 @@ local pairs          = pairs
 TeamPVC.CLAN_ID = "9f1c7a20-b9c0-4e11-9a3d-7ea55c0de001"
 TeamPVC.MOD_ID  = "BanditsExpansionPVC"
 
+-- El Capitan: TacticalAdvanced.lua lo usa para saber cuando NO tratar la
+-- muerte de un integrante de Team PVC como "cayo el lider" generico, sino
+-- como el disparador especifico de furia (ver OnSquadmateDeath alla).
+TeamPVC.CAPTAIN_BID = "9f1c7a20-b9c0-4e11-9a3d-7ea55c0de101"
+
+-- El Chispa (Sprint 2): 7mo integrante, SOLO 20% de probabilidad de venir en
+-- el grupo. A proposito NO esta en common/bandits.txt (el archivo que carga
+-- el mod base siempre, sin excepcion): si estuviera ahi, GetFromClan(cid)
+-- devolveria 7 candidatos permanentes y spawnGroup() elegiria 6-de-7 AL AZAR
+-- cada vez -- rompiendo la garantia de "los 6 fijos siempre entran" que ya
+-- construimos. En cambio, su perfil se inyecta en BanditCustom.banditData
+-- SOLO en el momento del spawn, condicionado al 20% (o forzado al 100% desde
+-- el menu debug), y se retira si no toco esta vez. Ver TeamPVC.SpawnGroup.
+TeamPVC.CHISPA_BID = "9f1c7a20-b9c0-4e11-9a3d-7ea55c0de107"
+
+-- Evaristo Brea: TacticalAsymmetric.lua lo usa para filtrar OnZombieDead y
+-- disparar "La Ultima Risa" solo en el, nunca en el resto del clan.
+TeamPVC.EVARISTO_BID = "9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"
+
 -- ---------------------------------------------------------------------------
 -- CONFIGURACION
 -- ---------------------------------------------------------------------------
@@ -80,6 +99,14 @@ TeamPVC.Config = {
     DayStart      = 0,        -- disponible desde el dia 0
     DayEnd        = 10000,
     GroupSize     = 6,        -- min = max = 6 -> spawnean los 6, capitan incluido
+
+    -- El Chispa (Sprint 2): 20% de aparecer como 7mo integrante.
+    Chispa = {
+        Enabled      = true,
+        SpawnChance  = 20,      -- % (0-100)
+        SightRange   = 20,      -- casillas: a partir de aca empieza a "verte" para arrancar la mecha
+        FuseMs       = 60000,   -- 60s desde que te ve hasta que tira el molotov
+    },
 
     -- Icono de llegada en pantalla (el mismo sistema que usa un clan nativo
     -- de Bandits2 al aparecer). SOLO lo dispara spawnType(), el planificador
@@ -165,6 +192,31 @@ local OUTFIT_FORMAL = {
 -- Mochilas posibles (solo se asigna una al 20%; ver RollBag)
 TeamPVC.Bags = {"Base.Bag_ALICEpack", "Base.Bag_DuffelBagTINT"}
 
+-- El Chispa: mismo uniforme militar que el resto del equipo (reutiliza items
+-- ya verificados en vez de arriesgar uno nuevo sin confirmar), sin chapa/hat
+-- particular -- lo distinto de el es la mecanica, no el vestuario.
+local OUTFIT_CHISPA = {
+    Hat                  = "Base.Hat_Army",
+    Eyes                 = "Base.Glasses_SafetyGoggles",
+    Tshirt               = "Base.Tshirt_CamoGreen",
+    Jacket               = "Base.Jacket_ArmyCamoGreen",
+    Pants                = "Base.Trousers_CamoGreen",
+    Hands                = "Base.Gloves_LeatherGlovesBlack",
+    UnderwearBottom      = "Base.Briefs_White",
+    Socks                = "Base.Socks_Long_White",
+    Shoes                = "Base.Shoes_ArmyBoots",
+}
+
+-- Lineas de la cuenta regresiva de El Chispa (la de presentacion va en
+-- TeamPVC.MemberIntroLines, junto a la de los otros 6, mas abajo).
+TeamPVC.ChispaLines = {
+    warn60  = "Tienen 1 minuto para salir o quemo todo!",
+    warn30  = "Quedan 30 segundos, salgan!",
+    warn10  = "10 segundos!",
+    warn5   = "5... 4... 3...!",
+    boom    = "Te tiraste peazo de lonji, empiezan los fuegos artificiales!",
+}
+
 -- ---------------------------------------------------------------------------
 -- DIALOGOS
 -- Pool "aplanado": la frase comica aparece dos veces, asi el peso doble sale
@@ -186,8 +238,9 @@ TeamPVC.MemberIntroLines = {
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de102"] = "Nealcito Murillo, con hacha y todo, para servirte el auxilio!",
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de103"] = "Khris Heartz, la ley acaba de llegar al barrio!",
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de104"] = "Nep Tune al mando, ni se te ocurra correr!",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"] = "Evaristo Wazy, con todo respeto, esto se va a poner feo!",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"] = "Evaristo Brea, con todo respeto, esto se va a poner feo!",
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de106"] = "Gaston Cath reportandose, ya valiste!",
+    [TeamPVC.CHISPA_BID]                     = "Soy El Chispa y les traje un regalito!",
 }
 
 -- ===========================================================================
@@ -250,8 +303,9 @@ TeamPVC.MemberNames = {
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de102"] = "Nealcito Murillo",
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de103"] = "Khris Heartz",
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de104"] = "Nep Tune",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"] = "Evaristo Wazy",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"] = "Evaristo Brea",
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de106"] = "Gaston Cath",
+    [TeamPVC.CHISPA_BID]                     = "El Chispa",
 }
 
 -- ===========================================================================
@@ -353,11 +407,11 @@ local function BuildMembers()
     end
     m["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de104"].weapons.melee = "Base.HuntingKnife"
 
-    -- 5. Evaristo Wazy -- el refinado
+    -- 5. Evaristo Brea -- el refinado
     m["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"] = {
         general = {
             modid = TeamPVC.MOD_ID, cid = TeamPVC.CLAN_ID,
-            name = "Evaristo Wazy",
+            name = "Evaristo Brea",
             female = false, skin = 2, hairType = 27, beardType = 8, hairColor = 1,
             health = 8, strength = 8, endurance = 7, sight = 8,
             exp1 = Bandit.Expertise.Thief, exp2 = 0, exp3 = 0,
@@ -386,6 +440,32 @@ local function BuildMembers()
     }
 
     return m
+end
+
+-- ---------------------------------------------------------------------------
+-- El Chispa (Sprint 2). Perfil separado de BuildMembers() a proposito: no es
+-- parte del roster fijo, se construye solo cuando toca inyectarlo (ver nota
+-- larga junto a TeamPVC.CHISPA_BID, mas arriba).
+-- No lleva arma de fuego -- su "arma" es el molotov que carga en el
+-- inventario (FixIdentity/OnZombieUpdate se lo da en el primer tick) y el
+-- machete es solo respaldo por si lo enganchan cuerpo a cuerpo antes de la
+-- cuenta regresiva.
+-- ---------------------------------------------------------------------------
+local function BuildChispaData()
+    return {
+        general = {
+            modid = TeamPVC.MOD_ID, cid = TeamPVC.CLAN_ID,
+            name = "El Chispa",
+            female = false, skin = 3, hairType = 13, beardType = 7, hairColor = 9,
+            health = 7, strength = 6, endurance = 7, sight = 8,
+            exp1 = 0, exp2 = 0, exp3 = 0,
+        },
+        clothing = CopyTable(OUTFIT_CHISPA),
+        tint = {},
+        weapons = {melee = "Base.Machete"},
+        ammo    = {},
+        bag     = {name = "Base.Bag_DuffelBagTINT"},
+    }
 end
 
 -- ===========================================================================
@@ -583,10 +663,12 @@ TeamPVC.ShoutNextTick = {}   -- [brain.id] = timestamp
 -- que alerta zombis -- que es precisamente lo que hace que esto sea un GRITO
 -- (como el "Q" del jugador) y no un simple cartel de texto flotante. Si en
 -- algun momento se agrega ese sonido al mod, avisen y lo reincorporamos.
-local function SpeakLine(bandit, id, now, text)
-    local cd = TeamPVC.ShoutCooldown[id]
-    if cd and now < cd then return false end
-
+-- Nivel bajo: texto + ruido, SIN cooldown. Lo usan tanto SpeakLine (que le
+-- agrega el cooldown anti-spam para los gritos "de sabor") como la cuenta
+-- regresiva de El Chispa (que NO debe usar ese cooldown compartido: si un
+-- aviso cayera justo despues de otro grito, se marcaria como "ya dicho" y se
+-- perderia en silencio -- inaceptable para avisos con hora exacta).
+local function SayNow(bandit, text)
     local cfg = TeamPVC.Config
 
     -- 1) texto -- mayusculas, mismo truco que usa el juego para "grito" vs "habla"
@@ -598,8 +680,14 @@ local function SpeakLine(bandit, id, now, text)
     local ok, err = pcall(addSound, bandit, bandit:getX(), bandit:getY(), bandit:getZ(),
                            cfg.ShoutSoundRadius, cfg.ShoutSoundVolume)
     if not ok then LogError("addSound", err) end
+end
 
-    TeamPVC.ShoutCooldown[id] = now + cfg.ShoutCooldownMs
+local function SpeakLine(bandit, id, now, text)
+    local cd = TeamPVC.ShoutCooldown[id]
+    if cd and now < cd then return false end
+
+    SayNow(bandit, text)
+    TeamPVC.ShoutCooldown[id] = now + TeamPVC.Config.ShoutCooldownMs
     return true
 end
 
@@ -631,14 +719,104 @@ local function FixIdentity(zombie, brain)
 
     brain.fullname = realName
 
+    -- El Chispa necesita su molotov GARANTIZADO (no es cuestion de suerte
+    -- como en el resto del mod: sin el, su cuenta regresiva no tiene con que
+    -- terminar). Se lo damos aca, en el mismo tick unico de "recien spawneo".
+    if brain.bid == TeamPVC.CHISPA_BID then
+        local ok, item = pcall(BanditCompatibility.InstanceItem, "Base.Molotov")
+        if ok and item then
+            zombie:getInventory():AddItem(item)
+        else
+            LogError("Molotov de El Chispa", item)
+        end
+    end
+
     -- Bandit.ApplyVisuals ya llamo a UpdateItemsToSpawnAtDeath durante el
     -- spawn con el nombre aleatorio original; hay que rehacerlo con el
     -- nombre correcto para que el DNI (Base.IDcard) diga lo que corresponde.
+    -- De paso, esto tambien registra el molotov recien agregado como botin
+    -- de muerte (UpdateItemsToSpawnAtDeath escanea el inventario en vivo).
     if type(Bandit) == "table" and type(Bandit.UpdateItemsToSpawnAtDeath) == "function" then
         Bandit.UpdateItemsToSpawnAtDeath(zombie, brain)
     end
 
     Log("Identidad corregida: " .. realName)
+end
+
+-- ===========================================================================
+-- EL CHISPA -- cuenta regresiva (maquina de estados por temporizador)
+-- ---------------------------------------------------------------------------
+-- Estado por bandido en una tabla propia (no en `brain`: son timestamps y
+-- flags de una secuencia de combate puntual, no algo que tenga sentido
+-- persistir en el save -- mismo criterio que TQW.State en TacticalQuickWins).
+-- ===========================================================================
+TeamPVC.ChispaState = {}   -- [id] = {startMs, w60, w30, w10, w5, done}
+
+local function GetChispaState(id)
+    local s = TeamPVC.ChispaState[id]
+    if not s then
+        s = {startMs = nil, w60 = false, w30 = false, w10 = false, w5 = false, done = false}
+        TeamPVC.ChispaState[id] = s
+    end
+    return s
+end
+
+local function Feature_Chispa(zombie, brain, id, now, dist2, player)
+    if brain.bid ~= TeamPVC.CHISPA_BID then return end
+    local cfg = TeamPVC.Config.Chispa
+    if not cfg.Enabled then return end
+
+    local cs = GetChispaState(id)
+    if cs.done then return end
+
+    if not cs.startMs then
+        -- todavia no arranco la mecha: espera a que sea hostil y lo vea
+        if not Bandit.IsHostile(zombie) then return end
+        local r = cfg.SightRange
+        if dist2 > (r * r) then return end
+        if not zombie:CanSee(player) then return end
+
+        cs.startMs = now
+        Log("El Chispa: mecha encendida")
+        -- sigue de largo: el primer aviso (w60) se dispara YA, mas abajo,
+        -- porque remaining = FuseMs - 0 = FuseMs siempre cumple "<= 60000"
+    end
+
+    local remaining = cfg.FuseMs - (now - cs.startMs)
+
+    if remaining <= 0 then
+        cs.done = true
+        SayNow(zombie, TeamPVC.ChispaLines.boom)
+
+        -- reutiliza la accion TQWMolotov ya construida en TacticalQuickWins.lua
+        -- (feature #8, El Piromaniaco) en vez de duplicar logica de lanzamiento.
+        if type(ZombieActions) == "table" and type(ZombieActions.TQWMolotov) == "table" then
+            Bandit.ClearTasks(zombie)
+            Bandit.AddTask(zombie, {
+                action = "TQWMolotov", anim = "Shove", time = 120,
+                x = math.floor(player:getX()), y = math.floor(player:getY()), z = player:getZ(),
+            })
+        else
+            LogError("Feature_Chispa", "ZombieActions.TQWMolotov no disponible (TacticalQuickWins.lua no cargo?)")
+        end
+        return
+    end
+
+    -- cada aviso se dice UNA sola vez, en orden descendente. SayNow (sin
+    -- cooldown): un aviso con hora exacta no puede perderse por spam ajeno.
+    if not cs.w60 and remaining <= 60000 then
+        cs.w60 = true
+        SayNow(zombie, TeamPVC.ChispaLines.warn60)
+    elseif not cs.w30 and remaining <= 30000 then
+        cs.w30 = true
+        SayNow(zombie, TeamPVC.ChispaLines.warn30)
+    elseif not cs.w10 and remaining <= 10000 then
+        cs.w10 = true
+        SayNow(zombie, TeamPVC.ChispaLines.warn10)
+    elseif not cs.w5 and remaining <= 5000 then
+        cs.w5 = true
+        SayNow(zombie, TeamPVC.ChispaLines.warn5)
+    end
 end
 
 -- El nucleo ya filtro bandido + brain + id + distancia al jugador, y nos pasa
@@ -650,6 +828,11 @@ local function OnZombieUpdate(zombie, brain, id, now, dist2, player)
         local ok, err = pcall(FixIdentity, zombie, brain)
         if not ok then LogError("FixIdentity", err) end
     end
+
+    -- La cuenta regresiva de El Chispa NO depende de ShoutEnabled: es una
+    -- mecanica de juego, no decoracion de chat.
+    local ok2, err2 = pcall(Feature_Chispa, zombie, brain, id, now, dist2, player)
+    if not ok2 then LogError("Feature_Chispa", err2) end
 
     if not TeamPVC.Config.ShoutEnabled then return end
 
@@ -681,6 +864,7 @@ local function OnZombieDead(zombie, brain, id)
     if id then
         TeamPVC.ShoutCooldown[id] = nil
         TeamPVC.ShoutNextTick[id] = nil
+        TeamPVC.ChispaState[id]   = nil
     end
 end
 
@@ -711,10 +895,29 @@ end
 -- ===========================================================================
 -- SPAWN
 -- ===========================================================================
+-- Decide si El Chispa entra esta vez, e inyecta/retira su perfil de
+-- BanditCustom.banditData EN EL MOMENTO -- nunca queda registrado de forma
+-- permanente (ver la nota larga junto a TeamPVC.CHISPA_BID). Devuelve el
+-- tamano de grupo correcto para que spawnGroup() del mod base tome EXACTAMENTE
+-- los candidatos que hay: 6-de-6 o 7-de-7, nunca un "6 de 7" al azar.
+local function RollChispa(force)
+    local cfg = TeamPVC.Config.Chispa
+    local include = cfg.Enabled and (force or ZombRand(100) < cfg.SpawnChance)
+
+    if include then
+        BanditCustom.banditData[TeamPVC.CHISPA_BID] = BuildChispaData()
+        return TeamPVC.Config.GroupSize + 1, true
+    else
+        BanditCustom.banditData[TeamPVC.CHISPA_BID] = nil
+        return TeamPVC.Config.GroupSize, false
+    end
+end
+
 -- Equivalente real de BanditSpawner.SpawnGroup(): un comando de cliente que
 -- atiende BanditServer.Spawner.Clan (funciona igual en SP, donde el lua de
 -- server/ corre en el mismo proceso).
-function TeamPVC.SpawnGroup(square)
+-- forceChispa: true fuerza el 20% de El Chispa a 100% (boton de debug).
+function TeamPVC.SpawnGroup(square, forceChispa)
     local player = getSpecificPlayer(0)
     if not player then return false end
 
@@ -733,20 +936,28 @@ function TeamPVC.SpawnGroup(square)
         return false
     end
 
+    -- pcall exitoso: (true, size, chispaIncluded). Fallido: (false, mensaje).
+    local rollOk, size, chispaIncluded = pcall(RollChispa, forceChispa)
+    if not rollOk then
+        LogError("RollChispa", size)   -- aca 'size' es el mensaje de error, no un numero
+        size, chispaIncluded = TeamPVC.Config.GroupSize, false
+    end
+
     sendClientCommand(player, 'Spawner', 'Clan', {
         cid     = TeamPVC.CLAN_ID,
-        size    = TeamPVC.Config.GroupSize,
+        size    = size,
         program = "Bandit",       -- IA de asalto
         x       = square:getX(),
         y       = square:getY(),
         z       = square:getZ(),
     })
 
-    local ok, err = pcall(ShowArrivalMarker, square)
-    if not ok then LogError("ShowArrivalMarker", err) end
+    local ok2, err = pcall(ShowArrivalMarker, square)
+    if not ok2 then LogError("ShowArrivalMarker", err) end
 
-    print("[TeamPVC] Solicitado spawn de " .. TeamPVC.Config.GroupSize ..
-          " integrantes en " .. square:getX() .. "," .. square:getY() .. "," .. square:getZ())
+    print("[TeamPVC] Solicitado spawn de " .. size ..
+          " integrantes en " .. square:getX() .. "," .. square:getY() .. "," .. square:getZ() ..
+          " (El Chispa: " .. tostring(chispaIncluded) .. ")")
     return true
 end
 
@@ -812,6 +1023,13 @@ local function OnSpawnAtPlayer(worldobjects)
     if not ok then LogError("SpawnGroup", err) end
 end
 
+-- forceChispa=true: el 20% de El Chispa pasa a 100%, para poder probar la
+-- cuenta regresiva de inmediato sin tener que reintentar el spawn varias veces.
+local function OnSpawnWithChispa(worldobjects)
+    local ok, err = pcall(TeamPVC.SpawnGroup, nil, true)
+    if not ok then LogError("SpawnGroup", err) end
+end
+
 local function OnReinject(worldobjects)
     local ok, err = pcall(TeamPVC.Inject)
     if not ok then LogError("Inject", err) end
@@ -848,7 +1066,7 @@ function TeamPVC.Diagnose()
             end
         end
     end
-    print("Integrantes con cid   : " .. members .. " (esperado 6)")
+    print("Integrantes con cid   : " .. members .. " (6 fijos + El Chispa si toco esta vez)")
 
     -- bandidos Team PVC realmente vivos en el mundo, y si ya tienen el
     -- nombre real corregido (ver FixIdentity / TeamPVC.MemberNames)
@@ -856,7 +1074,7 @@ function TeamPVC.Diagnose()
     if type(BanditZombie) == "table" and BanditZombie.GetAllB then
         local all = BanditZombie.GetAllB()
         if all then
-            for _, light in pairs(all) do
+            for zid, light in pairs(all) do
                 banditsTotal = banditsTotal + 1
                 if light.brain and light.brain.cid == TeamPVC.CLAN_ID then
                     alive = alive + 1
@@ -866,7 +1084,17 @@ function TeamPVC.Diagnose()
                         tag = (light.brain.fullname == expected) and "OK" or "PENDIENTE"
                         if light.brain.fullname == expected then named = named + 1 end
                     end
-                    print("    - " .. tostring(light.brain.fullname) .. "  [" .. tag .. "]")
+                    local extra = ""
+                    if light.brain.bid == TeamPVC.CHISPA_BID then
+                        local cs = TeamPVC.ChispaState[zid]
+                        if cs and cs.startMs then
+                            local remaining = math.max(0, TeamPVC.Config.Chispa.FuseMs - (getTimestampMs() - cs.startMs))
+                            extra = " (mecha: " .. string.format("%.0f", remaining / 1000) .. "s restantes)"
+                        else
+                            extra = " (mecha aun no encendida)"
+                        end
+                    end
+                    print("    - " .. tostring(light.brain.fullname) .. "  [" .. tag .. "]" .. extra)
                 end
             end
         end
@@ -910,6 +1138,7 @@ local function OnFillWorldObjectContextMenu(playerNum, context, worldobjects, te
     context:addSubMenu(parent, subMenu)
 
     subMenu:addOption("Spawn Team PVC (Elite)", worldobjects, OnSpawnAtPlayer)
+    subMenu:addOption("Spawn Team PVC (+ Piromano Forzado)", worldobjects, OnSpawnWithChispa)
     if square then
         subMenu:addOption("Spawn Team PVC aqui (casilla)", worldobjects, OnSpawnHere, square)
     end
