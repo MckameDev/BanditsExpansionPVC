@@ -1,0 +1,15 @@
+[9f1c7a20-b9c0-4e11-9a3d-7ea55c0de001]
+	general: name = TeamPVC_Elite
+	spawn: friendly = false
+	spawn: companion = false
+	spawn: defenders = false
+	spawn: campers = false
+	spawn: assault = true
+	spawn: wanderer = false
+	spawn: roadblock = false
+	spawn: dayStart = 0
+	spawn: dayEnd = 10000
+	spawn: spawnChance = 0
+	spawn: groupMin = 6
+	spawn: groupMax = 6
+	spawn: zone = 0
