@@ -1,0 +1,10 @@
+name=Bandits: Tactical Expansion
+id=BanditsExpansionPVC
+poster=poster.png
+author=MckameDev
+description=Sub-mod de expansion para Bandits (de Slayer). Anade dialogos de combate contextuales y un paquete de mecanicas tacticas: auto-medicacion, desenfunde a quemarropa, linternas nocturnas, cojera por heridas, extorsion, saqueo de cadaveres, molotovs, refuerzos por radio y el grupo elite Team PVC.
+description=<BR>
+description=<RED>REQUIERE el mod original Bandits (id=Bandits2) activado y cargado ANTES que este sub-mod.
+require=\Bandits2
+modversion=1.1.1
+tags=Build 42;Framework;Immersion
