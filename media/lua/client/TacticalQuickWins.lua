@@ -120,10 +120,11 @@ TQW.Config = {
     Negotiator = {
         Enabled           = true,
         Range             = 3,       -- casillas para iniciar la negociacion
-        DemandWindowMs    = 10000,   -- 10s de plazo para tirar lo exigido
-        ComplianceRadius  = 4,       -- casillas: que tan cerca del bandido debe caer
-        ComplianceGraceMs = 180000,  -- 3 min de tregua real si cumple
-        CooldownMs        = 300000,  -- 5 min por bandido entre intentos de negociar
+        PauseMs           = 5000,   -- pausa de hostilidades (si aplica)
+        DemandWindowMs    = 10000,  -- plazo para tirar lo exigido
+        ComplianceRadius  = 4,      -- casillas: que tan cerca del bandido debe caer
+        ComplianceGraceMs = 180000, -- 3 min de tregua real si cumple
+        CooldownMs        = 300000, -- 5 min por bandido entre intentos
         IntervalMs        = 1000,
     },
 
@@ -211,13 +212,16 @@ TQW.LegParts = {
 TQW.Lines = {
     meds      = {"Aguanta... me curo y sigo.", "Solo un momento!", "Maldita sea, esto duele."},
     sidearm   = {"A la mierda, pistola!", "Muy cerca, muy cerca!", "No hay tiempo de recargar!"},
-    -- %s = nombre del item exigido (getDisplayName() del item elegido, ver
-    -- PickDemandItem en Feature_Negotiator)
     negotiate = {
         "No tienes con que dispararme! Tira %s y vive.",
         "Estas seco, verdad? Entrega %s y te dejo ir.",
         "Ni un paso mas. %s al suelo. Ahora.",
         "Puedo matarte o puedes pagarme con %s. Tu decides.",
+        "No tienes con que dispararme! Suelta la mochila y vive.",
+        "Estas seco, verdad? Entrega el equipo y te dejo ir.",
+        "Ni un paso mas. Tu mochila, al suelo. Ahora.",
+        "Puedo matarte o puedes pagarme. Tu decides.",
+    },
     },
     scavenge  = {"Este ya no lo necesita.", "Buen botin...", "Vamos, agarra lo que sirva."},
     pyro      = {"Que arda todo!", "Fuego! FUEGO!", "A ver si te gusta el calor!"},
@@ -775,6 +779,11 @@ end
      un numero/booleano simple -- por eso vive en `state` (nuestra tabla de
      runtime, TQW.State) y NUNCA en `brain` (que el mod base serializa a texto
      plano en cada guardado; meter ahi un objeto solo ensuciaria el save).
+
+     La pausa se implementa apagando la hostilidad (que es lo que consulta el
+     selector de objetivos del mod base) y programando su restauracion en el
+     propio brain, de modo que sobrevive a que el chunk se descargue: si el
+     bandido desaparece a mitad de la negociacion, al volver se restaura sola.
 --]]
 local DEMAND_CATEGORY_PRIORITY = {"Weapon", "Ammo", "FirstAid", "Food"}
 
@@ -813,7 +822,6 @@ local function PickDemandItem(player)
     if count == 0 then return nil end
     return any[ZombRand(count) + 1]
 end
-
 local function IsPlayerHelpless(player)
     local item = player:getPrimaryHandItem()
     if not item then return true end
@@ -840,7 +848,6 @@ local function CheckDemandComplied(bandit, item, radiusSq)
     local dx, dy = wx - bandit:getX(), wy - bandit:getY()
     return (dx * dx + dy * dy) <= radiusSq
 end
-
 local function Feature_Negotiator(bandit, brain, state, now)
     local cfg = TQW.Config.Negotiator
     if not cfg.Enabled then return end
@@ -886,7 +893,6 @@ local function Feature_Negotiator(bandit, brain, state, now)
 
     local demandItem = PickDemandItem(player)
     if not demandItem then return end   -- no lleva nada que valga la pena exigir
-
     SetCooldown(state, "negotiator", now, cfg.CooldownMs)
 
     -- guardamos el estado original para poder devolverlo tal cual
@@ -906,7 +912,6 @@ local function Feature_Negotiator(bandit, brain, state, now)
 
     -- ~300 unidades de tarea equivalen a ~5 s a 60 FPS
     Bandit.AddTask(bandit, {action = "Time", anim = "ShiftWeight", time = 300, lock = true})
-
     local template = Choice(TQW.Lines.negotiate)
     if template then
         TQW.Chat(bandit, string.format(template, state.tqwDemandName))

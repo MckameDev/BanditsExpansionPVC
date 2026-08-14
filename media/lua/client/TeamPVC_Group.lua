@@ -189,7 +189,6 @@ TeamPVC.MemberIntroLines = {
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"] = "Evaristo Wazy, con todo respeto, esto se va a poner feo!",
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de106"] = "Gaston Cath reportandose, ya valiste!",
 }
-
 -- ===========================================================================
 -- UTILIDADES
 -- ===========================================================================
@@ -575,12 +574,19 @@ end
 TeamPVC.ShoutCooldown = {}   -- [brain.id] = timestamp
 TeamPVC.ShoutNextTick = {}   -- [brain.id] = timestamp
 
--- Dice `text` respetando el cooldown anti-spam. Devuelve true solo si
--- realmente se dijo (false si el cooldown la trago) -- lo necesitamos para no
--- marcar la presentacion como "ya usada" si nunca llego a salir de la boca.
 local function SpeakLine(bandit, id, now, text)
     local cd = TeamPVC.ShoutCooldown[id]
     if cd and now < cd then return false end
+
+    bandit:addLineChatElement(string.upper(text), 1, 0.85, 0.1)
+
+    local ok, err = pcall(function() bandit:getEmitter():playSound("BanditShout") end)
+    if not ok then LogError("addSound", err) end
+
+    TeamPVC.ShoutCooldown[id] = now + TeamPVC.Config.ShoutCooldownMs
+
+    return true
+end
 
     local cfg = TeamPVC.Config
 
@@ -595,9 +601,6 @@ local function SpeakLine(bandit, id, now, text)
     if not ok then LogError("addSound", err) end
 
     TeamPVC.ShoutCooldown[id] = now + cfg.ShoutCooldownMs
-    return true
-end
-
 -- La PRIMERA vez que un bandido grita, usa su linea de presentacion propia
 -- (TeamPVC.MemberIntroLines) en vez del pool generico. brain.pvcIntroduced
 -- solo se marca si SpeakLine confirma que la dijo -- si el cooldown la
@@ -611,6 +614,7 @@ local function ShoutRandom(bandit, brain, id, now)
     if SpeakLine(bandit, id, now, text) and isIntro then
         brain.pvcIntroduced = true
     end
+end
 end
 
 -- ---------------------------------------------------------------------------
