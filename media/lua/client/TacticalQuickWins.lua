@@ -120,7 +120,6 @@ TQW.Config = {
     Negotiator = {
         Enabled           = true,
         Range             = 3,       -- casillas para iniciar la negociacion
-        PauseMs           = 5000,   -- pausa de hostilidades (si aplica)
         DemandWindowMs    = 10000,  -- plazo para tirar lo exigido
         ComplianceRadius  = 4,      -- casillas: que tan cerca del bandido debe caer
         ComplianceGraceMs = 180000, -- 3 min de tregua real si cumple
@@ -217,11 +216,6 @@ TQW.Lines = {
         "Estas seco, verdad? Entrega %s y te dejo ir.",
         "Ni un paso mas. %s al suelo. Ahora.",
         "Puedo matarte o puedes pagarme con %s. Tu decides.",
-        "No tienes con que dispararme! Suelta la mochila y vive.",
-        "Estas seco, verdad? Entrega el equipo y te dejo ir.",
-        "Ni un paso mas. Tu mochila, al suelo. Ahora.",
-        "Puedo matarte o puedes pagarme. Tu decides.",
-    },
     },
     scavenge  = {"Este ya no lo necesita.", "Buen botin...", "Vamos, agarra lo que sirva."},
     pyro      = {"Que arda todo!", "Fuego! FUEGO!", "A ver si te gusta el calor!"},

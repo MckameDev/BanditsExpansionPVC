@@ -189,6 +189,7 @@ TeamPVC.MemberIntroLines = {
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"] = "Evaristo Wazy, con todo respeto, esto se va a poner feo!",
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de106"] = "Gaston Cath reportandose, ya valiste!",
 }
+
 -- ===========================================================================
 -- UTILIDADES
 -- ===========================================================================
@@ -574,19 +575,17 @@ end
 TeamPVC.ShoutCooldown = {}   -- [brain.id] = timestamp
 TeamPVC.ShoutNextTick = {}   -- [brain.id] = timestamp
 
+-- NOTA: hubo un intento de un colaborador (PR de ElWazy) de reemplazar el
+-- ruido mundial por bandit:getEmitter():playSound("BanditShout"). Lo dejamos
+-- afuera a proposito: "BanditShout" no es un sonido que este definido en
+-- ningun script de este mod ni del base (no hay forma de confirmar que
+-- suene), y ademas playSound() en el emitter NO dispara el sistema de ruido
+-- que alerta zombis -- que es precisamente lo que hace que esto sea un GRITO
+-- (como el "Q" del jugador) y no un simple cartel de texto flotante. Si en
+-- algun momento se agrega ese sonido al mod, avisen y lo reincorporamos.
 local function SpeakLine(bandit, id, now, text)
     local cd = TeamPVC.ShoutCooldown[id]
     if cd and now < cd then return false end
-
-    bandit:addLineChatElement(string.upper(text), 1, 0.85, 0.1)
-
-    local ok, err = pcall(function() bandit:getEmitter():playSound("BanditShout") end)
-    if not ok then LogError("addSound", err) end
-
-    TeamPVC.ShoutCooldown[id] = now + TeamPVC.Config.ShoutCooldownMs
-
-    return true
-end
 
     local cfg = TeamPVC.Config
 
@@ -601,6 +600,9 @@ end
     if not ok then LogError("addSound", err) end
 
     TeamPVC.ShoutCooldown[id] = now + cfg.ShoutCooldownMs
+    return true
+end
+
 -- La PRIMERA vez que un bandido grita, usa su linea de presentacion propia
 -- (TeamPVC.MemberIntroLines) en vez del pool generico. brain.pvcIntroduced
 -- solo se marca si SpeakLine confirma que la dijo -- si el cooldown la
@@ -614,7 +616,6 @@ local function ShoutRandom(bandit, brain, id, now)
     if SpeakLine(bandit, id, now, text) and isIntro then
         brain.pvcIntroduced = true
     end
-end
 end
 
 -- ---------------------------------------------------------------------------
