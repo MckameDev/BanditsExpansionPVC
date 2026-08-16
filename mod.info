@@ -22,7 +22,9 @@ description=- Sabotaje Vehicular "El Ladron de Motores" (25%): roba la bateria d
 description=- Emboscada de Humo "El Fantasma" (25%): al recibir dano o quedar bajo 50% de vida, se cubre con humo y te flanquea.
 description=- La Ultima Risa (100%, exclusivo de Evaristo Brea del Team PVC): al caer, grita su ultima frase y detona una explosion segundos despues.
 description=<BR>
+description=Idiomas: todos los dialogos y textos del mod se traducen automaticamente segun el idioma del juego (Ingles / English y Espanol). Si tu idioma no es ninguno de los dos, se muestra en Ingles.
+description=<BR>
 description=<RED>REQUIERE el mod original Bandits (id=Bandits2) activado y cargado ANTES que este sub-mod.
 require=\Bandits2
-modversion=1.1.2
+modversion=1.2.0
 tags=Build 42;Framework;Immersion

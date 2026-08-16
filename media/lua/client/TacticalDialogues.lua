@@ -2,11 +2,8 @@
     TacticalDialogues.lua
     Sub-mod de expansion para "Bandits" v2 (Slayer) - Build 42
     Idea #27: Comunicaciones y Dialogos Contextuales.
-
-    Los bandidos reaccionan verbalmente en pantalla al contexto de combate:
-      - al recibir dano            -> "Me dieron!" / "Cubranme!"
-      - al morir un aliado del clan-> "Cayeron a [Nombre]!"
-      - al recargar el arma        -> "Cubran el pasillo, estoy recargando!"
+    Los bandidos reaccionan verbalmente al recibir dano, al morir un aliado
+    del clan, y al recargar el arma.
 
     NOTAS DE IMPLEMENTACION (verificadas contra el codigo del mod base v42.20)
     -------------------------------------------------------------------------
@@ -35,18 +32,11 @@ local TD = BanditTacticalDialogues
 
 TD.VERSION = "1.1.0"
 
--- ---------------------------------------------------------------------------
--- Locales de motor (resueltos una vez, no en cada frame)
--- ---------------------------------------------------------------------------
 local getTimestampMs = getTimestampMs
 local ZombRand       = ZombRand
 local pcall          = pcall
 local pairs          = pairs
-local string_format  = string.format
 
--- ---------------------------------------------------------------------------
--- Configuracion
--- ---------------------------------------------------------------------------
 TD.Config = {
     Enabled       = true,
     CooldownMinMs = 5000,   -- ventana anti-spam por bandido: 5 s ...
@@ -58,53 +48,32 @@ TD.Config = {
 }
 TD.Config.HearingRangeSq = TD.Config.HearingRange * TD.Config.HearingRange
 
--- ---------------------------------------------------------------------------
--- Lineas de dialogo.
--- Tablas estaticas creadas UNA vez al cargar el archivo: jamas se reconstruyen
--- en tiempo de ejecucion, de modo que el GC no ve basura por cada frase.
--- ---------------------------------------------------------------------------
+-- Guardan CLAVES de traduccion (no texto), resueltas con getText() en el
+-- punto de uso (ver media/lua/shared/Translate/EN|ES/BanditsExpansionPVC.json).
 TD.Lines = {
     tookDamage = {
-        "Me dieron!",
-        "Joder, me dieron!",
-        "Cubranme, estoy herido!",
-        "Aaagh! Me alcanzo!",
-        "Estoy sangrando!",
+        "BEP_TD_Dmg1", "BEP_TD_Dmg2", "BEP_TD_Dmg3", "BEP_TD_Dmg4", "BEP_TD_Dmg5",
     },
     reloading = {
-        "Cubran el pasillo, estoy recargando!",
-        "Sin municion, denme un segundo!",
-        "Cambio de cargador! Cubranme!",
-        "Recargando! No lo dejen avanzar!",
+        "BEP_TD_Reload1", "BEP_TD_Reload2", "BEP_TD_Reload3", "BEP_TD_Reload4",
     },
-    -- %s se sustituye por el nombre del aliado caido (brain.fullname)
+    -- getText(clave, nombre) sustituye %1 por el nombre del aliado caido (brain.fullname)
     allyDied = {
-        "Cayeron a %s!",
-        "%s ha caido! Nos estan masacrando!",
-        "Mataron a %s, hijo de perra!",
-        "%s! NO! Acaben con el!",
+        "BEP_TD_AllyDied1", "BEP_TD_AllyDied2", "BEP_TD_AllyDied3", "BEP_TD_AllyDied4",
     },
 }
 
--- ---------------------------------------------------------------------------
--- Estado
--- ---------------------------------------------------------------------------
 TD.Enabled   = false
 TD.Cooldowns = {}   -- [brain.id] = timestamp en que puede volver a hablar
 TD.Reloading = {}   -- [brain.id] = true mientras dura la recarga (anti-repeticion)
 TD.NextTick  = {}   -- [brain.id] = timestamp del proximo chequeo de recarga
 
--- Acciones de tarea del mod base que representan "recargando".
--- Tabla de consulta: mas barata que una cadena de comparaciones.
 local RELOAD_ACTIONS = {
     ["Load"]   = true,
     ["Unload"] = true,
     ["Rack"]   = true,
 }
 
--- ---------------------------------------------------------------------------
--- Utilidades
--- ---------------------------------------------------------------------------
 local lastErrorMs = 0
 
 local function LogError(where, err)
@@ -128,8 +97,6 @@ function TD.CanSpeak(id)
     return nextAllowed == nil or getTimestampMs() >= nextAllowed
 end
 
--- Emite una linea de chat sobre la cabeza del bandido, respetando el cooldown.
--- addLineChatElement es el metodo NATIVO del motor (IsoGameCharacter).
 function TD.Say(bandit, id, text)
     if not bandit or not text or not id then return end
     if not TD.CanSpeak(id) then return end
@@ -147,33 +114,26 @@ function TD.Say(bandit, id, text)
                      + ZombRand(cfg.CooldownMaxMs - cfg.CooldownMinMs)
 end
 
--- ---------------------------------------------------------------------------
--- REACCION: recibir dano
--- OnHitZombie es el evento publico del motor; el propio mod base lo usa para
--- su reaccion de audio. Registrar otro handler es aditivo, no lo sustituye.
--- ---------------------------------------------------------------------------
--- El nucleo (00_TacticalCore) ya filtro que es un bandido y nos pasa el brain
--- y el id ya resueltos: aqui no se repite ninguna llamada a Java.
+-- OnHitZombie es el evento publico del motor; el propio mod base ya lo usa
+-- para su reaccion de audio, asi que registrar otro handler aca es aditivo,
+-- no lo sustituye.
 local function OnHitZombie(zombie, brain, id, attacker, bodyPartType, handWeapon)
     if not TD.Enabled then return end
     if zombie:isDead() then return end
 
-    TD.Say(zombie, id, PickLine(TD.Lines.tookDamage))
+    TD.Say(zombie, id, getText(PickLine(TD.Lines.tookDamage)))
 end
 
--- ---------------------------------------------------------------------------
--- REACCION: muerte de un aliado del mismo clan
 -- Recorremos la cache publica de bandidos del mod base (BanditZombie.GetAllB),
 -- que ya trae posicion y brain por bandido: no hace falta escanear la celda.
--- ---------------------------------------------------------------------------
 local function BroadcastAllyDeath(deadBandit, deadBrain)
     local clan = deadBrain.clan or deadBrain.cid
     if clan == nil then return end
 
-    local victimName = deadBrain.fullname or "uno de los nuestros"
+    local victimName = deadBrain.fullname or getText("BEP_TD_Unknown")
     local line = PickLine(TD.Lines.allyDied)
     if not line then return end
-    local text = string_format(line, victimName)
+    local text = getText(line, victimName)
 
     local dx0, dy0, dz0 = deadBandit:getX(), deadBandit:getY(), deadBandit:getZ()
     local rangeSq = TD.Config.HearingRangeSq
@@ -202,7 +162,6 @@ local function OnZombieDead(zombie, brain, id)
     local ok, err = pcall(BroadcastAllyDeath, zombie, brain)
     if not ok then LogError("BroadcastAllyDeath", err) end
 
-    -- limpieza del estado de este bandido
     if id then
         TD.Cooldowns[id] = nil
         TD.Reloading[id] = nil
@@ -210,12 +169,9 @@ local function OnZombieDead(zombie, brain, id)
     end
 end
 
--- ---------------------------------------------------------------------------
--- REACCION: recarga de arma
 -- El mod base no expone un evento de recarga; lo que si expone es la cola de
 -- tareas del bandido. Cuando la tarea en curso es Load / Unload / Rack, esta
 -- recargando. Marcamos un flag para hablar UNA sola vez por episodio.
--- ---------------------------------------------------------------------------
 local function OnZombieUpdate(zombie, brain, id, now, dist2, player)
     if not TD.Enabled then return end
 
@@ -238,11 +194,8 @@ local function OnZombieUpdate(zombie, brain, id, now, dist2, player)
     end
 end
 
--- ---------------------------------------------------------------------------
--- ARRANQUE
 -- Si el mod base no esta (o cambio su API), el sub-mod se queda dormido en
 -- silencio en lugar de romper la partida.
--- ---------------------------------------------------------------------------
 local function Bootstrap()
     if not TD.Config.Enabled then return end
 

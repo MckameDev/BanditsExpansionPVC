@@ -39,20 +39,14 @@ if TeamPVC then return end -- guarda anti doble carga
 TeamPVC = {}
 TeamPVC.VERSION = "1.0.0"
 
--- ---------------------------------------------------------------------------
--- Locales de motor (resueltos una vez; nada de globales en el camino caliente)
--- ---------------------------------------------------------------------------
 local getTimestampMs = getTimestampMs
 local ZombRand       = ZombRand
 local pcall          = pcall
 local pairs          = pairs
 
--- ---------------------------------------------------------------------------
--- IDENTIFICADORES
 -- El cargador de Bandits espera GUIDs y, sobre todo, el cid queda GUARDADO en
 -- el brain de cada bandido dentro de la partida. Por eso son constantes fijas:
 -- si cambian, los Team PVC ya spawneados se quedan huerfanos.
--- ---------------------------------------------------------------------------
 TeamPVC.CLAN_ID = "9f1c7a20-b9c0-4e11-9a3d-7ea55c0de001"
 TeamPVC.MOD_ID  = "BanditsExpansionPVC"
 
@@ -75,9 +69,6 @@ TeamPVC.CHISPA_BID = "9f1c7a20-b9c0-4e11-9a3d-7ea55c0de107"
 -- disparar "La Ultima Risa" solo en el, nunca en el resto del clan.
 TeamPVC.EVARISTO_BID = "9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"
 
--- ---------------------------------------------------------------------------
--- CONFIGURACION
--- ---------------------------------------------------------------------------
 TeamPVC.Config = {
     Debug         = false,
 
@@ -132,12 +123,9 @@ TeamPVC.Config = {
     ShoutSoundVolume = 6,     -- volumen del ruido, misma escala que usa addSound() en vanilla
 }
 
--- ---------------------------------------------------------------------------
--- ROPA POR BodyLocation
 -- Cada clave es un BodyLocation de la lista que usa el mod base
 -- (BanditCompatibility.GetBodyLocationsOrdered). Todos los items estan
 -- verificados contra media/scripts del juego en B42.
--- ---------------------------------------------------------------------------
 local OUTFIT_ARMY_M = {
     Hat                  = "Base.Hat_Army",
     Eyes                 = "Base.Glasses_SafetyGoggles",
@@ -209,24 +197,23 @@ local OUTFIT_CHISPA = {
 
 -- Lineas de la cuenta regresiva de El Chispa (la de presentacion va en
 -- TeamPVC.MemberIntroLines, junto a la de los otros 6, mas abajo).
+-- Guardan CLAVES de traduccion (ver Translate/EN|ES/BanditsExpansionPVC.json),
+-- resueltas con getText() en cada punto de uso.
 TeamPVC.ChispaLines = {
-    warn60  = "Tienen 1 minuto para salir o quemo todo!",
-    warn30  = "Quedan 30 segundos, salgan!",
-    warn10  = "10 segundos!",
-    warn5   = "5... 4... 3...!",
-    boom    = "Te tiraste peazo de lonji, empiezan los fuegos artificiales!",
+    warn60  = "BEP_PVC_ChispaWarn60",
+    warn30  = "BEP_PVC_ChispaWarn30",
+    warn10  = "BEP_PVC_ChispaWarn10",
+    warn5   = "BEP_PVC_ChispaWarn5",
+    boom    = "BEP_PVC_ChispaBoom",
 }
 
--- ---------------------------------------------------------------------------
--- DIALOGOS
 -- Pool "aplanado": la frase comica aparece dos veces, asi el peso doble sale
 -- gratis con un solo ZombRand y sin construir tablas en tiempo de ejecucion.
--- ---------------------------------------------------------------------------
 TeamPVC.Phrases = {
-    "Este es el TeamPVC!",
-    "Viva PVC y viva Chile!",
-    "*Sonidos en chileno*",
-    "*Sonidos en chileno*",   -- peso doble, a proposito
+    "BEP_PVC_Phrase1",
+    "BEP_PVC_Phrase2",
+    "BEP_PVC_Phrase3",
+    "BEP_PVC_Phrase3",   -- peso doble, a proposito
 }
 
 -- Presentacion: UNA frase propia por integrante, con su nombre, indexada por
@@ -234,18 +221,15 @@ TeamPVC.Phrases = {
 -- vez que cada bandido grita (ver brain.pvcIntroduced en ShoutRandom) -- y
 -- despues pasan al pool generico de arriba como cualquier otro grito.
 TeamPVC.MemberIntroLines = {
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de101"] = "Soy el Capitan Mauricio Murillo y esta es tu ultima advertencia!",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de102"] = "Nealcito Murillo, con hacha y todo, para servirte el auxilio!",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de103"] = "Khris Heartz, la ley acaba de llegar al barrio!",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de104"] = "Nep Tune al mando, ni se te ocurra correr!",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"] = "Evaristo Brea, con todo respeto, esto se va a poner feo!",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de106"] = "Gaston Cath reportandose, ya valiste!",
-    [TeamPVC.CHISPA_BID]                     = "Soy El Chispa y les traje un regalito!",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de101"] = "BEP_PVC_IntroMauricio",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de102"] = "BEP_PVC_IntroNealcito",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de103"] = "BEP_PVC_IntroKhris",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de104"] = "BEP_PVC_IntroNep",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"] = "BEP_PVC_IntroEvaristo",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de106"] = "BEP_PVC_IntroGaston",
+    [TeamPVC.CHISPA_BID]                     = "BEP_PVC_IntroChispa",
 }
 
--- ===========================================================================
--- UTILIDADES
--- ===========================================================================
 local lastErrorMs = 0
 
 local function Log(msg)
@@ -273,9 +257,6 @@ local function CopyTable(src)
     return out
 end
 
--- ===========================================================================
--- NOMBRES REALES -> DNI de cada integrante
--- ---------------------------------------------------------------------------
 -- ADVERTENCIA IMPORTANTE sobre como el mod base maneja los nombres:
 --
 --   brain.fullname = args.fullname or BanditNames.GenerateName(female)
@@ -297,7 +278,6 @@ end
 -- es el correcto. No llevan chapas de identidad puestas (se quitaron: al ser
 -- un item referenciado por tipo en `clothing:`, no una instancia propia, el
 -- motor no permite grabarles el nombre -- solo el DNI puede llevarlo).
--- ===========================================================================
 TeamPVC.MemberNames = {
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de101"] = "Capitan Mauricio Murillo",
     ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de102"] = "Nealcito Murillo",
@@ -308,15 +288,11 @@ TeamPVC.MemberNames = {
     [TeamPVC.CHISPA_BID]                     = "El Chispa",
 }
 
--- ===========================================================================
--- DEFINICION DE LOS 6 INTEGRANTES
--- ---------------------------------------------------------------------------
 -- Campos `general` (los mismos que usa bandits.txt):
 --   health / strength / endurance / sight : escala 1..9 (el mod los interpola)
 --   exp1..exp3 : especialidades de Bandit.Expertise (0 = ninguna)
 -- Campos `ammo`: NUMERO DE CAJAS de municion, no un item. BanditWeapons.Make
 -- deduce cargador, calibre y balas a partir del arma.
--- ===========================================================================
 local function BuildMembers()
     local m = {}
 
@@ -442,7 +418,6 @@ local function BuildMembers()
     return m
 end
 
--- ---------------------------------------------------------------------------
 -- El Chispa (Sprint 2). Perfil separado de BuildMembers() a proposito: no es
 -- parte del roster fijo, se construye solo cuando toca inyectarlo (ver nota
 -- larga junto a TeamPVC.CHISPA_BID, mas arriba).
@@ -450,7 +425,6 @@ end
 -- inventario (FixIdentity/OnZombieUpdate se lo da en el primer tick) y el
 -- machete es solo respaldo por si lo enganchan cuerpo a cuerpo antes de la
 -- cuenta regresiva.
--- ---------------------------------------------------------------------------
 local function BuildChispaData()
     return {
         general = {
@@ -468,9 +442,6 @@ local function BuildChispaData()
     }
 end
 
--- ===========================================================================
--- INYECCION EN LAS TABLAS DEL MOD BASE
--- ===========================================================================
 TeamPVC.Injected = false
 
 function TeamPVC.Inject(quiet)
@@ -490,7 +461,6 @@ function TeamPVC.Inject(quiet)
 
     local cfg = TeamPVC.Config
 
-    -- --- CLAN ---------------------------------------------------------------
     -- Estructura identica a la de clans.txt. `spawn` es lo que lee
     -- checkEvent()/spawnType() del planificador NATIVO... salvo spawnChance,
     -- que dejamos en 0 a proposito (ver el comentario largo en TeamPVC.Config
@@ -516,7 +486,6 @@ function TeamPVC.Inject(quiet)
         },
     }
 
-    -- --- INTEGRANTES --------------------------------------------------------
     local members = BuildMembers()
     local count = 0
     for bid, data in pairs(members) do
@@ -532,9 +501,6 @@ function TeamPVC.Inject(quiet)
     return true
 end
 
--- ---------------------------------------------------------------------------
--- RE-INYECCION AUTOMATICA
--- ---------------------------------------------------------------------------
 -- El flag TeamPVC.Injected NO basta como garantia: BanditCustom.Load() hace
 --     BanditCustom.banditData = {} ; BanditCustom.clanData = {}
 -- y se ejecuta varias veces por partida. En single player, el mod base la
@@ -576,15 +542,12 @@ local function InstallLoadHook()
     Log("Hook de reinyeccion instalado sobre BanditCustom.Load")
 end
 
--- ===========================================================================
--- MOCHILAS: 20% SI / 80% NO, POR BANDIDO Y POR SPAWN
--- ---------------------------------------------------------------------------
--- El perfil del integrante lleva mochila fija, porque el spawner la lee tal
--- cual. La tirada real se hace aqui: envolvemos Bandit.ApplyVisuals, que es
--- global y se ejecuta en el primer tick del bandido ANTES de vestirlo, asi que
--- podemos quitarle la mochila a tiempo (visual + botin al morir).
--- El wrapper llama SIEMPRE al original, incluso si nuestra logica falla.
--- ===========================================================================
+-- Mochilas: 20% si / 80% no, por bandido y por spawn. El perfil del
+-- integrante lleva mochila fija, porque el spawner la lee tal cual; la
+-- tirada real se hace aqui: envolvemos Bandit.ApplyVisuals, que es global y
+-- se ejecuta en el primer tick del bandido ANTES de vestirlo, asi que
+-- podemos quitarle la mochila a tiempo (visual + botin al morir). El
+-- wrapper llama SIEMPRE al original, incluso si nuestra logica falla.
 local function RollBag(brain)
     if brain.pvcBagRolled then return end
     brain.pvcBagRolled = true
@@ -619,9 +582,7 @@ local function InstallBagHook()
     Log("Hook de mochilas instalado sobre Bandit.ApplyVisuals")
 end
 
--- ===========================================================================
--- GRITOS ("Q" / Shout) -- NO chat de fondo
--- ---------------------------------------------------------------------------
+-- GRITOS ("Q" / Shout) -- NO chat de fondo.
 -- Pediste que esto se sienta como cuando el JUGADOR aprieta Q (keybind
 -- "Shout"), no como el murmullo de fondo que ya generan otros bandidos via
 -- TacticalDialogues.lua. Verificado en el Lua del propio juego:
@@ -651,7 +612,6 @@ end
 -- personaje (confirmado: no aparece ni una vez en el Lua vanilla del juego,
 -- solo lo usa el propio Bandit.Say() del mod base para sus subtitulos -- no
 -- tiene relacion con la ventana de chat multijugador de ISChat.lua).
--- ===========================================================================
 TeamPVC.ShoutCooldown = {}   -- [brain.id] = timestamp
 TeamPVC.ShoutNextTick = {}   -- [brain.id] = timestamp
 
@@ -697,20 +657,18 @@ end
 -- bloqueo, se reintenta en el proximo grito en vez de perderse para siempre.
 local function ShoutRandom(bandit, brain, id, now)
     local isIntro = not brain.pvcIntroduced
-    local text = isIntro and TeamPVC.MemberIntroLines[brain.bid] or nil
-    text = text or Choice(TeamPVC.Phrases)
-    if not text then return end
+    local key = isIntro and TeamPVC.MemberIntroLines[brain.bid] or nil
+    key = key or Choice(TeamPVC.Phrases)
+    if not key then return end
 
-    if SpeakLine(bandit, id, now, text) and isIntro then
+    if SpeakLine(bandit, id, now, getText(key)) and isIntro then
         brain.pvcIntroduced = true
     end
 end
 
--- ---------------------------------------------------------------------------
 -- IDENTIDAD: corrige el nombre real (ver TeamPVC.MemberNames mas arriba) y
 -- regenera el DNI de muerte con ese nombre. Se ejecuta UNA sola vez por
 -- bandido (brain.pvcNameFixed), en el primer tick tras el spawn.
--- ---------------------------------------------------------------------------
 local function FixIdentity(zombie, brain)
     brain.pvcNameFixed = true
 
@@ -743,13 +701,10 @@ local function FixIdentity(zombie, brain)
     Log("Identidad corregida: " .. realName)
 end
 
--- ===========================================================================
--- EL CHISPA -- cuenta regresiva (maquina de estados por temporizador)
--- ---------------------------------------------------------------------------
+-- EL CHISPA -- cuenta regresiva (maquina de estados por temporizador).
 -- Estado por bandido en una tabla propia (no en `brain`: son timestamps y
 -- flags de una secuencia de combate puntual, no algo que tenga sentido
 -- persistir en el save -- mismo criterio que TQW.State en TacticalQuickWins).
--- ===========================================================================
 TeamPVC.ChispaState = {}   -- [id] = {startMs, w60, w30, w10, w5, done}
 
 local function GetChispaState(id)
@@ -786,7 +741,7 @@ local function Feature_Chispa(zombie, brain, id, now, dist2, player)
 
     if remaining <= 0 then
         cs.done = true
-        SayNow(zombie, TeamPVC.ChispaLines.boom)
+        SayNow(zombie, getText(TeamPVC.ChispaLines.boom))
 
         -- reutiliza la accion TQWMolotov ya construida en TacticalQuickWins.lua
         -- (feature #8, El Piromaniaco) en vez de duplicar logica de lanzamiento.
@@ -806,16 +761,16 @@ local function Feature_Chispa(zombie, brain, id, now, dist2, player)
     -- cooldown): un aviso con hora exacta no puede perderse por spam ajeno.
     if not cs.w60 and remaining <= 60000 then
         cs.w60 = true
-        SayNow(zombie, TeamPVC.ChispaLines.warn60)
+        SayNow(zombie, getText(TeamPVC.ChispaLines.warn60))
     elseif not cs.w30 and remaining <= 30000 then
         cs.w30 = true
-        SayNow(zombie, TeamPVC.ChispaLines.warn30)
+        SayNow(zombie, getText(TeamPVC.ChispaLines.warn30))
     elseif not cs.w10 and remaining <= 10000 then
         cs.w10 = true
-        SayNow(zombie, TeamPVC.ChispaLines.warn10)
+        SayNow(zombie, getText(TeamPVC.ChispaLines.warn10))
     elseif not cs.w5 and remaining <= 5000 then
         cs.w5 = true
-        SayNow(zombie, TeamPVC.ChispaLines.warn5)
+        SayNow(zombie, getText(TeamPVC.ChispaLines.warn5))
     end
 end
 
@@ -868,13 +823,11 @@ local function OnZombieDead(zombie, brain, id)
     end
 end
 
--- ===========================================================================
--- ICONO DE LLEGADA (replica getIconDataByProgram + el aviso de
+-- Icono de llegada (replica getIconDataByProgram + el aviso de
 -- BanditEventMarkerHandler que server/BanditServerSpawner.lua dispara SOLO
 -- desde spawnType(), el planificador nativo -- inalcanzable desde aca por
 -- ser `local`). Los valores (media/ui/raid.png, radio, duracion) son los
 -- mismos que usa el mod base para clanes "Bandit" hostiles.
--- ===========================================================================
 local function ShowArrivalMarker(square)
     if not TeamPVC.Config.ShowArrivalIcon then return end
     if not (SandboxVars.Bandits and SandboxVars.Bandits.General_ArrivalIcon) then return end
@@ -892,9 +845,6 @@ local function ShowArrivalMarker(square)
     if not ok then LogError("ShowArrivalMarker", err) end
 end
 
--- ===========================================================================
--- SPAWN
--- ===========================================================================
 -- Decide si El Chispa entra esta vez, e inyecta/retira su perfil de
 -- BanditCustom.banditData EN EL MOMENTO -- nunca queda registrado de forma
 -- permanente (ver la nota larga junto a TeamPVC.CHISPA_BID). Devuelve el
@@ -961,15 +911,12 @@ function TeamPVC.SpawnGroup(square, forceChispa)
     return true
 end
 
--- ===========================================================================
--- SPAWN NATURAL PROPIO (reemplaza a checkEvent() del mod base)
--- ---------------------------------------------------------------------------
--- Misma cadencia que el planificador nativo (Events.EveryTenMinutes) y la
--- misma formula de probabilidad de DISPARO (spawnChance * SpawnMultiplier / 6),
+-- Spawn natural propio (reemplaza a checkEvent() del mod base): misma
+-- cadencia que el planificador nativo (Events.EveryTenMinutes) y la misma
+-- formula de probabilidad de DISPARO (spawnChance * SpawnMultiplier / 6),
 -- para que el slider de sandbox del jugador siga controlando que tan seguido
 -- aparecen. Lo unico que cambiamos es que, al disparar, llamamos a
 -- SpawnGroup() con size=6 fijo -- nunca pasa por la formula de TAMANO nativa.
--- ===========================================================================
 
 -- Punto de aparicion a distancia del jugador (no literalmente encima). No es
 -- tan sofisticado como generateSpawnPointUniform del mod base (esa funcion es
@@ -1010,9 +957,6 @@ local function CheckNaturalSpawn()
     TeamPVC.SpawnGroup(square)
 end
 
--- ===========================================================================
--- MENU DE DEBUG
--- ===========================================================================
 local function OnSpawnHere(worldobjects, square)
     local ok, err = pcall(TeamPVC.SpawnGroup, square)
     if not ok then LogError("SpawnGroup", err) end
@@ -1133,22 +1077,19 @@ local function OnFillWorldObjectContextMenu(playerNum, context, worldobjects, te
         end
     end
 
-    local parent  = context:addOption("[DEBUG] Team PVC", worldobjects, nil)
+    local parent  = context:addOption(getText("BEP_PVC_DebugMenu"), worldobjects, nil)
     local subMenu = context:getNew(context)
     context:addSubMenu(parent, subMenu)
 
-    subMenu:addOption("Spawn Team PVC (Elite)", worldobjects, OnSpawnAtPlayer)
-    subMenu:addOption("Spawn Team PVC (+ Piromano Forzado)", worldobjects, OnSpawnWithChispa)
+    subMenu:addOption(getText("BEP_PVC_DebugSpawnElite"), worldobjects, OnSpawnAtPlayer)
+    subMenu:addOption(getText("BEP_PVC_DebugSpawnChispa"), worldobjects, OnSpawnWithChispa)
     if square then
-        subMenu:addOption("Spawn Team PVC aqui (casilla)", worldobjects, OnSpawnHere, square)
+        subMenu:addOption(getText("BEP_PVC_DebugSpawnHere"), worldobjects, OnSpawnHere, square)
     end
-    subMenu:addOption("Re-inyectar definicion del clan", worldobjects, OnReinject)
-    subMenu:addOption("Diagnostico (ver consola)", worldobjects, OnDiagnose)
+    subMenu:addOption(getText("BEP_PVC_DebugReinject"), worldobjects, OnReinject)
+    subMenu:addOption(getText("BEP_PVC_DebugDiagnose"), worldobjects, OnDiagnose)
 end
 
--- ===========================================================================
--- ARRANQUE
--- ===========================================================================
 local function Bootstrap()
     if not TeamPVC.Inject() then return end
 

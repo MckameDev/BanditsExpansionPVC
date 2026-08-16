@@ -44,9 +44,6 @@ TacticalAdvanced = {}
 local TA = TacticalAdvanced
 TA.VERSION = "1.0.0"
 
--- ---------------------------------------------------------------------------
--- Locales de motor
--- ---------------------------------------------------------------------------
 local getTimestampMs = getTimestampMs
 local getSpecificPlayer = getSpecificPlayer
 local ZombRand        = ZombRand
@@ -56,9 +53,6 @@ local pairs            = pairs
 local math_sqrt        = math.sqrt
 local math_min         = math.min
 
--- ---------------------------------------------------------------------------
--- Configuracion
--- ---------------------------------------------------------------------------
 TA.Config = {
     Debug = false,
 
@@ -79,12 +73,8 @@ TA.Config = {
     },
 }
 
--- ===========================================================================
--- SEGUIMIENTO DE ESCUADRA (poblacion pico y "lider" por cid)
--- ---------------------------------------------------------------------------
 -- Tablas planas por cid: cero asignaciones por tick, solo se tocan cuando
 -- aparece un integrante nuevo o cuando alguien muere (eventos raros).
--- ===========================================================================
 TA.SquadPeak    = {}   -- [cid] = maximo de integrantes vistos con vida
 TA.SquadSeen    = {}   -- [cid] = { [id]=true, ... }  (para no contar dos veces)
 TA.SquadLeader  = {}   -- [cid] = id del primer integrante visto (lider informal)
@@ -103,9 +93,6 @@ local function TrackSquadMember(cid, id)
     end
 end
 
--- ---------------------------------------------------------------------------
--- Utilidades
--- ---------------------------------------------------------------------------
 local lastErrorMs = 0
 local function LogError(where, err)
     local now = getTimestampMs()
@@ -126,9 +113,7 @@ local function Shout(bandit, text, r, g, b)
     if not ok then LogError("Shout", err) end
 end
 
--- ===========================================================================
 -- #1 -- SISTEMA DE MORAL Y FURIA
--- ===========================================================================
 
 -- Huida: apaga la hostilidad (lo que consulta ManageCombat del mod base para
 -- decidir si atacar, confirmado ya por el propio Negociador de TacticalQuickWins,
@@ -234,7 +219,7 @@ local function OnSquadmateDeath(deadZombie, deadBrain, deadId)
             local ok, err = pcall(MakeFurious, survivors[i].zombie, survivors[i].brain)
             if not ok then LogError("MakeFurious", err) end
             if not shouted then
-                Shout(survivors[i].zombie, "MATARON AL CAPITAN, NO DEJEN A NI UNO VIVO!", 1, 0.1, 0.1)
+                Shout(survivors[i].zombie, getText("BEP_TA_CaptainDown"), 1, 0.1, 0.1)
                 shouted = true
             end
         end
@@ -266,14 +251,11 @@ local function OnZombieDead(zombie, brain, id)
     local ok, err = pcall(OnSquadmateDeath, zombie, brain, id)
     if not ok then LogError("OnSquadmateDeath", err) end
 
-    -- limpieza de referencias muertas
     local seen = TA.SquadSeen[brain.cid]
     if seen then seen[id] = nil end
 end
 
--- ===========================================================================
 -- #2 -- EL MEDICO DE COMBATE
--- ===========================================================================
 local function Feature_Medic(bandit, brain, id, now, dist2, player, state)
     local cfg = TA.Config.Medic
     if not cfg.Enabled then return end
@@ -334,11 +316,9 @@ local function Feature_Medic(bandit, brain, id, now, dist2, player, state)
     Log("Medico: curando aliado a " .. string.format("%.1f", dist) .. " casillas")
 end
 
--- ---------------------------------------------------------------------------
--- Accion custom: TAHealAlly. Sigue el mismo patron que TQWUseMeds (mod base
--- via Bandit.AddTask/ZombieActions), registrada con prefijo TA para no pisar
--- ninguna accion existente ni futura del mod base.
--- ---------------------------------------------------------------------------
+-- Accion custom TAHealAlly, mismo patron que TQWUseMeds (mod base via
+-- Bandit.AddTask/ZombieActions); prefijo TA para no pisar ninguna accion
+-- existente ni futura del mod base.
 local function RegisterActions()
     ZombieActions = ZombieActions or {}
 
@@ -380,9 +360,6 @@ local function RegisterActions()
     end
 end
 
--- ===========================================================================
--- DESPACHO PRINCIPAL
--- ===========================================================================
 TA.State = {}   -- [id] = tabla de estado reutilizada por bandido
 
 local function GetState(id)
@@ -422,9 +399,6 @@ local function CleanupState()
     end
 end
 
--- ===========================================================================
--- ARRANQUE
--- ===========================================================================
 local function CheckDependencies()
     local missing = {}
     local required = {

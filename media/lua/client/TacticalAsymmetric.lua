@@ -75,9 +75,6 @@ TacticalAsymmetric = {}
 local TA2 = TacticalAsymmetric
 TA2.VERSION = "1.0.0"
 
--- ---------------------------------------------------------------------------
--- Locales de motor
--- ---------------------------------------------------------------------------
 local getTimestampMs = getTimestampMs
 local getCell         = getCell
 local ZombRand        = ZombRand
@@ -89,9 +86,6 @@ local table_remove     = table.remove
 local table_insert     = table.insert
 local table_concat     = table.concat
 
--- ---------------------------------------------------------------------------
--- Configuracion
--- ---------------------------------------------------------------------------
 TA2.Tactics = {"FakeSurrender", "HordeBait", "CarSabotage", "SmokeAmbush"}
 
 TA2.Config = {
@@ -100,7 +94,9 @@ TA2.Config = {
     Evaristo = {
         ExplodeDelayMs = 2500,  -- 2 a 3 segundos, tal como pide el brief
         ExplodePower   = 100,   -- misma potencia que usa el juego base
-        Line = "SE ARRUINO EL TRAJE, NOS VEMOS EN EL INFIERNO PEAZO DE LONJI",
+        -- Clave de traduccion (ver Translate/EN|ES/BanditsExpansionPVC.json),
+        -- resuelta con getText() en OnEvaristoDead.
+        LineKey = "BEP_TA2_EvaristoLastWords",
     },
 
     FakeSurrender = {
@@ -134,9 +130,6 @@ TA2.Config = {
     },
 }
 
--- ---------------------------------------------------------------------------
--- Utilidades
--- ---------------------------------------------------------------------------
 local lastErrorMs = 0
 local function LogError(where, err)
     local now = getTimestampMs()
@@ -168,10 +161,8 @@ local function IsTeamPVC(brain)
     return type(TeamPVC) == "table" and brain.cid == TeamPVC.CLAN_ID
 end
 
--- ---------------------------------------------------------------------------
--- Estado por bandido (reutilizado durante toda su vida, igual que
--- TA.State/TQW.State en los otros modulos del submod)
--- ---------------------------------------------------------------------------
+-- Reutilizada durante toda la vida del bandido, igual que TA.State/TQW.State
+-- en los otros modulos del submod.
 TA2.State = {}
 
 local function GetState(id)
@@ -183,11 +174,8 @@ local function GetState(id)
     return s
 end
 
--- ===========================================================================
--- #1 -- PERFIL TACTICO ASIMETRICO
--- ---------------------------------------------------------------------------
--- Se asigna UNA sola vez por bandido generico, en su primer tick con vida.
--- ===========================================================================
+-- #1 -- PERFIL TACTICO ASIMETRICO. Se asigna UNA sola vez por bandido
+-- generico, en su primer tick con vida.
 local function AssignTactic(brain)
     if brain.tqwTactic then return end
     brain.tqwTactic = Choice(TA2.Tactics)
@@ -222,15 +210,12 @@ local function SeedTacticItem(zombie, brain)
     end
 end
 
--- ===========================================================================
--- #2 -- LA ULTIMA RISA (Evaristo Brea, exclusivo)
--- ---------------------------------------------------------------------------
+-- #2 -- LA ULTIMA RISA (Evaristo Brea, exclusivo).
 -- La bomba se arma con un timestamp y se revisa en Events.OnTick: no puede
 -- detonar en el mismo instante de OnZombieDead sin sentirse instantanea, y
 -- el brief pide 2-3s de demora despues de la frase final. La lista casi
 -- siempre esta vacia (Evaristo muere una vez por vida de personaje), asi
 -- que el costo de este handler es, en la practica, un solo "if" por tick.
--- ===========================================================================
 TA2.PendingBombs = {}
 
 local function TriggerEvaristoExplosion(x, y, z)
@@ -258,7 +243,7 @@ local function OnTick()
 end
 
 local function OnEvaristoDead(zombie, brain)
-    local ok, err = pcall(zombie.addLineChatElement, zombie, TA2.Config.Evaristo.Line, 1, 0.2, 0.05)
+    local ok, err = pcall(zombie.addLineChatElement, zombie, getText(TA2.Config.Evaristo.LineKey), 1, 0.2, 0.05)
     if not ok then LogError("Evaristo ultima linea", err) end
 
     local x, y, z = zombie:getX(), zombie:getY(), zombie:getZ()
@@ -269,9 +254,7 @@ local function OnEvaristoDead(zombie, brain)
     Log("La Ultima Risa: bomba armada")
 end
 
--- ===========================================================================
 -- #3 -- RENDICION FALSA ("El Traicionero")
--- ===========================================================================
 
 -- Igual a BanditBrain.IsOutOfAmmo, pero SOLO sobre el arma primaria (el
 -- brief pide especificamente "arma primaria vacia", no ambas como hace la
@@ -304,7 +287,7 @@ local function Feature_FakeSurrender(zombie, brain, id, now, dist2, player, stat
         Bandit.ClearTasks(zombie)
         zombie:setTarget(nil)
         zombie:clearAggroList()
-        SayLine(zombie, "Me rindo, llevate todo!")
+        SayLine(zombie, getText("BEP_TA2_SurrenderFake"))
         Log("Rendicion falsa: activada (id=" .. tostring(id) .. ")")
         return
     end
@@ -335,13 +318,11 @@ local function Feature_FakeSurrender(zombie, brain, id, now, dist2, player, stat
         for i = 1, #tasks do Bandit.AddTask(zombie, tasks[i]) end
     end
     zombie:setTarget(player)
-    SayLine(zombie, "Nunca confies en un bandido!")
+    SayLine(zombie, getText("BEP_TA2_SurrenderBetray"))
     Log("Rendicion falsa: TRAICION (id=" .. tostring(id) .. ")")
 end
 
--- ===========================================================================
 -- #4 -- TRAMPA DE HORDA ("El Carnada")
--- ===========================================================================
 local function IsPlayerEntrenched(player)
     local square = player:getSquare()
     if not square then return false end
@@ -369,13 +350,11 @@ local function Feature_HordeBait(zombie, brain, id, now, dist2, player, state)
     local ok2, err = pcall(addSound, zombie, px, py, pz, cfg.NoiseRadius, cfg.NoiseVolume)
     if not ok2 then LogError("HordeBait addSound", err) end
 
-    SayLine(zombie, "A ver como lidias con estos!")
+    SayLine(zombie, getText("BEP_TA2_HordeBaitTaunt"))
     Log("Trampa de horda: ruido en la posicion del jugador (id=" .. tostring(id) .. ")")
 end
 
--- ===========================================================================
 -- #5 -- SABOTAJE VEHICULAR ("El Ladron de Motores")
--- ===========================================================================
 -- NOTA (corregido tras un error real en el log): cell:getVehicles():get(i)
 -- revienta con "Object tried to call nil" cuando se llama desde el hilo de
 -- actualizacion de zombis (IsoZombie.update -> OnZombieUpdate). El propio
@@ -445,12 +424,10 @@ local function Feature_CarSabotage(zombie, brain, id, now, dist2, player, state)
     Log("Sabotaje vehicular: manipulando vehiculo (id=" .. tostring(id) .. ")")
 end
 
--- ---------------------------------------------------------------------------
--- Accion custom: TA2Sabotage. Mismo patron onStart/onWorking/onComplete que
+-- Accion custom TA2Sabotage, mismo patron onStart/onWorking/onComplete que
 -- TQWUseMeds/TAHealAlly. Al terminar, roba la bateria (o vacia el tanque) y
 -- reutiliza TacticalAdvanced.MakeFlee (expuesta publicamente para esto) en
 -- vez de duplicar la logica de huida.
--- ---------------------------------------------------------------------------
 local function RegisterActions()
     ZombieActions = ZombieActions or {}
 
@@ -504,9 +481,7 @@ local function RegisterActions()
     end
 end
 
--- ===========================================================================
 -- #6 -- EMBOSCADA DE HUMO ("El Fantasma")
--- ===========================================================================
 local function TriggerSmoke(zombie, brain, state, now)
     if brain.tqwSmoked then return end
     local inventory = zombie:getInventory()
@@ -586,9 +561,6 @@ local function OnHitZombie(zombie, brain, id, attacker, bodyPartType, handWeapon
     if not ok then LogError("TriggerSmoke(hit)", err) end
 end
 
--- ===========================================================================
--- DESPACHO PRINCIPAL
--- ===========================================================================
 local FeatureByTactic = {
     FakeSurrender = Feature_FakeSurrender,
     HordeBait     = Feature_HordeBait,
@@ -621,9 +593,6 @@ local function OnZombieDead(zombie, brain, id)
     if not ok then LogError("OnEvaristoDead", err) end
 end
 
--- ===========================================================================
--- ARRANQUE
--- ===========================================================================
 local function CheckDependencies()
     local missing = {}
 

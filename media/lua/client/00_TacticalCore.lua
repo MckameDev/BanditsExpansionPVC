@@ -37,17 +37,11 @@ if PVCCore then return end -- guarda anti doble carga
 PVCCore = {}
 PVCCore.VERSION = "1.0.0"
 
--- ---------------------------------------------------------------------------
--- Locales de motor
--- ---------------------------------------------------------------------------
 local getTimestampMs   = getTimestampMs
 local getSpecificPlayer = getSpecificPlayer
 local isServer         = isServer
 local pcall            = pcall
 
--- ---------------------------------------------------------------------------
--- Configuracion
--- ---------------------------------------------------------------------------
 PVCCore.Config = {
     -- Mas alla de esta distancia (en casillas) al jugador, ningun modulo se
     -- ejecuta. El mod base ya deja "useless" a los bandidos lejanos; esto
@@ -59,9 +53,7 @@ PVCCore.Config = {
 }
 PVCCore.Config.MaxDistanceSq = PVCCore.Config.MaxDistance * PVCCore.Config.MaxDistance
 
--- ---------------------------------------------------------------------------
--- Registros de handlers (arrays planos: for numerico, sin iteradores)
--- ---------------------------------------------------------------------------
+-- Arrays planos (for numerico, sin iteradores) en vez de tablas indexadas por nombre.
 local updateFns, updateCount = {}, 0
 local hitFns,    hitCount    = {}, 0
 local deadFns,   deadCount   = {}, 0
@@ -107,9 +99,6 @@ local function Report(name, err)
     end
 end
 
--- ---------------------------------------------------------------------------
--- Cache del jugador
--- ---------------------------------------------------------------------------
 local cachedPlayer, playerCacheUntil = nil, 0
 local playerX, playerY = 0, 0
 
@@ -135,20 +124,12 @@ function PVCCore.GetCachedPlayer()
     return cachedPlayer
 end
 
--- ---------------------------------------------------------------------------
--- DESPACHADOR PRINCIPAL
--- Una sola vez por zombi/frame. La ruta rapida (zombi normal) sale en dos
--- comparaciones y una llamada a Java.
--- ---------------------------------------------------------------------------
 -- Informe unico del recuento real de modulos, en el primer despacho (para
 -- entonces todos ya se registraron). `reported` se declara AQUI, antes de la
 -- funcion que lo usa: en Lua un local declarado mas abajo no seria visible
 -- desde arriba y se leeria como global nil.
 local reported = false
 
--- ---------------------------------------------------------------------------
--- Respaldo de brain para el momento de la muerte
--- ---------------------------------------------------------------------------
 -- BUG REAL encontrado en el log (ver TacticalAsymmetric.lua/"La Ultima
 -- Risa" que jamas disparaba): Bandits2 (media/lua/client/BanditUpdate.lua,
 -- funcion OnZombieDead, ~linea 2349) llama BanditBrain.Remove(bandit) --
@@ -179,10 +160,9 @@ local function OnZombieUpdate(zombie)
               hitCount .. " hit, " .. deadCount .. " dead.")
     end
 
-    -- 1) filtro mas barato primero: descarta todos los zombis normales
+    -- filtro mas barato primero: descarta todos los zombis normales
     if not zombie:getVariableBoolean("Bandit") then return end
 
-    -- 2) brain una sola vez para todos los modulos
     local brain = BanditBrain.Get(zombie)
     if not brain then return end
     local id = brain.id
@@ -192,18 +172,16 @@ local function OnZombieUpdate(zombie)
 
     local now = getTimestampMs()
 
-    -- 3) jugador cacheado + posicion fresca
     local player = GetPlayer(now)
     if not player then return end
     playerX, playerY = player:getX(), player:getY()
 
-    -- 4) descarte por distancia: si esta lejisimos, nadie se entera
+    -- descarte por distancia: si esta lejisimos, nadie se entera
     local dx = zombie:getX() - playerX
     local dy = zombie:getY() - playerY
     local dist2 = dx * dx + dy * dy
     if dist2 > PVCCore.Config.MaxDistanceSq then return end
 
-    -- 5) reparto
     for i = 1, updateCount do
         local h = updateFns[i]
         if not disabled[h.name] then
@@ -272,9 +250,6 @@ local function CleanupBrainCache()
     end
 end
 
--- ---------------------------------------------------------------------------
--- ARRANQUE
--- ---------------------------------------------------------------------------
 PVCCore.Ready = false
 
 local function Bootstrap()

@@ -1,0 +1,93 @@
+{
+    "BEP_TD_Unknown": "uno de los nuestros",
+
+    "BEP_TD_Dmg1": "¡Me dieron!",
+    "BEP_TD_Dmg2": "¡Joder, me dieron!",
+    "BEP_TD_Dmg3": "¡Cúbranme, estoy herido!",
+    "BEP_TD_Dmg4": "¡Aaagh! ¡Me alcanzó!",
+    "BEP_TD_Dmg5": "¡Estoy sangrando!",
+
+    "BEP_TD_Reload1": "¡Cubran el pasillo, estoy recargando!",
+    "BEP_TD_Reload2": "¡Sin munición, denme un segundo!",
+    "BEP_TD_Reload3": "¡Cambio de cargador! ¡Cúbranme!",
+    "BEP_TD_Reload4": "¡Recargando! ¡No lo dejen avanzar!",
+
+    "BEP_TD_AllyDied1": "¡Cayó %1!",
+    "BEP_TD_AllyDied2": "¡%1 ha caído! ¡Nos están masacrando!",
+    "BEP_TD_AllyDied3": "¡Mataron a %1, hijo de perra!",
+    "BEP_TD_AllyDied4": "¡%1! ¡NO! ¡Acaben con él!",
+
+    "BEP_PVC_ChispaWarn60": "¡Tienen 1 minuto para salir o quemo todo!",
+    "BEP_PVC_ChispaWarn30": "¡Quedan 30 segundos, salgan!",
+    "BEP_PVC_ChispaWarn10": "¡10 segundos!",
+    "BEP_PVC_ChispaWarn5": "¡5... 4... 3...!",
+    "BEP_PVC_ChispaBoom": "¡Te tiraste peazo de lonji, empiezan los fuegos artificiales!",
+
+    "BEP_PVC_Phrase1": "¡Este es el Team PVC!",
+    "BEP_PVC_Phrase2": "¡Viva PVC y viva el clan!",
+    "BEP_PVC_Phrase3": "*Sonidos en chileno*",
+
+    "BEP_PVC_IntroMauricio": "¡Soy el Capitán Mauricio Murillo y esta es tu última advertencia!",
+    "BEP_PVC_IntroNealcito": "¡Nealcito Murillo, con hacha y todo, para servirte el auxilio!",
+    "BEP_PVC_IntroKhris": "¡Khris Heartz, la ley acaba de llegar al barrio!",
+    "BEP_PVC_IntroNep": "¡Nep Tune al mando, ni se te ocurra correr!",
+    "BEP_PVC_IntroEvaristo": "Evaristo Brea, con todo respeto, ¡esto se va a poner feo!",
+    "BEP_PVC_IntroGaston": "¡Gastón Cath reportándose, ya valiste!",
+    "BEP_PVC_IntroChispa": "¡Soy El Chispa y les traje un regalito!",
+
+    "BEP_PVC_DebugMenu": "[DEBUG] Team PVC",
+    "BEP_PVC_DebugSpawnElite": "Spawnear Team PVC (Elite)",
+    "BEP_PVC_DebugSpawnChispa": "Spawnear Team PVC (+ Piromano Forzado)",
+    "BEP_PVC_DebugSpawnHere": "Spawnear Team PVC aquí (casilla)",
+    "BEP_PVC_DebugReinject": "Re-inyectar definición del clan",
+    "BEP_PVC_DebugDiagnose": "Diagnóstico (ver consola)",
+
+    "BEP_TQW_UnknownBandit": "un desconocido",
+
+    "BEP_TQW_Meds1": "Aguanta... me curo y sigo.",
+    "BEP_TQW_Meds2": "¡Solo un momento!",
+    "BEP_TQW_Meds3": "Maldita sea, esto duele.",
+
+    "BEP_TQW_Sidearm1": "¡A la mierda, pistola!",
+    "BEP_TQW_Sidearm2": "¡Muy cerca, muy cerca!",
+    "BEP_TQW_Sidearm3": "¡No hay tiempo de recargar!",
+
+    "BEP_TQW_Negotiate1": "¡No tienes con qué dispararme! Tira %1 y vive.",
+    "BEP_TQW_Negotiate2": "¿Estás seco, verdad? Entrega %1 y te dejo ir.",
+    "BEP_TQW_Negotiate3": "Ni un paso más. %1 al suelo. Ahora.",
+    "BEP_TQW_Negotiate4": "Puedo matarte o puedes pagarme con %1. Tú decides.",
+
+    "BEP_TQW_Scavenge1": "Este ya no lo necesita.",
+    "BEP_TQW_Scavenge2": "Buen botín...",
+    "BEP_TQW_Scavenge3": "Vamos, agarra lo que sirva.",
+
+    "BEP_TQW_Pyro1": "¡Que arda todo!",
+    "BEP_TQW_Pyro2": "¡Fuego! ¡FUEGO!",
+    "BEP_TQW_Pyro3": "¡A ver si te gusta el calor!",
+
+    "BEP_TQW_Radio1": "Base, aquí equipo uno, ¡tenemos bajas!",
+    "BEP_TQW_Radio2": "¡Manden refuerzos, YA!",
+    "BEP_TQW_Radio3": "¡Nos están matando, necesitamos apoyo!",
+
+    "BEP_TQW_NegotiateSuccess": "Buen trato. No dispares y no disparo.",
+    "BEP_TQW_NegotiateFail": "No entregaste nada. Se acabó la charla.",
+
+    "BEP_TQW_Note1Title": "Cartel: SE BUSCA",
+    "BEP_TQW_Note1Body": "SE BUSCA - VIVO O MUERTO\n\n%1\n\nBuscado por saqueo del depósito de Rosewood y por la muerte de dos de los nuestros.\n\nRECOMPENSA: 4 cajas de munición y un tanque de gasolina.\nEntregar prueba en el puesto del kilómetro 12.\n\n- El Contable",
+
+    "BEP_TQW_Note2Title": "Carta sin enviar",
+    "BEP_TQW_Note2Body": "Mamá:\n\nSi lees esto es que alguien me encontró antes que tú.\nNo somos los monstruos que dicen en la radio. Al principio solo queríamos comida.\nDespués de lo de la granja... ya no sé qué somos.\n\nNo vengas a buscarme.\n\n%1",
+
+    "BEP_TQW_Note3Title": "Orden del clan",
+    "BEP_TQW_Note3Body": "ORDEN PERMANENTE - LEER Y QUEMAR\n\n1. Nadie entra al perímetro sin la contraseña.\n2. Los heridos se quedan atrás. Sin excepciones.\n3. Si cae uno, se avisa por radio y se replantea. NO se persigue.\n4. El que abandone su puesto responde ante mí.\n\nFirmado: %1",
+
+    "BEP_TQW_Note4Title": "Lista de deudas",
+    "BEP_TQW_Note4Body": "LO QUE ME DEBEN:\n\n- Vic: 200 balas del .308. Muerto. Cobrado.\n- Marta: la escopeta. Se largó al norte.\n- El nuevo: nada todavía. Tiene buena puntería.\n- %1 (yo): un tiro en la rodilla que me dieron por cubrirlos a todos.\n\nNadie paga nunca.",
+
+    "BEP_TA2_EvaristoLastWords": "SE ARRUINÓ EL TRAJE, NOS VEMOS EN EL INFIERNO PEAZO DE LONJI",
+    "BEP_TA2_SurrenderFake": "¡Me rindo, llévate todo!",
+    "BEP_TA2_SurrenderBetray": "¡Nunca confíes en un bandido!",
+    "BEP_TA2_HordeBaitTaunt": "¡A ver cómo lidias con estos!",
+
+    "BEP_TA_CaptainDown": "¡MATARON AL CAPITAN, NO DEJEN A NI UNO VIVO!"
+}

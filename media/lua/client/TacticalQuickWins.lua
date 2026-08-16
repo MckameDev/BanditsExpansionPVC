@@ -58,9 +58,6 @@ if TQW then return end -- guarda anti doble carga
 TQW = {}
 TQW.VERSION = "1.0.0"
 
--- ---------------------------------------------------------------------------
--- Locales de motor (resolver globales una vez, no en cada frame)
--- ---------------------------------------------------------------------------
 local getTimestampMs   = getTimestampMs
 local getSpecificPlayer= getSpecificPlayer
 local getGameTime      = getGameTime
@@ -73,11 +70,7 @@ local pairs            = pairs
 local math_floor       = math.floor
 local math_sqrt        = math.sqrt
 local table_insert     = table.insert
-local string_format    = string.format
 
--- ===========================================================================
--- CONFIGURACION
--- ===========================================================================
 TQW.Config = {
     Debug            = false,   -- true = imprime trazas en consola
     ShowChat         = true,    -- lineas de texto sobre la cabeza del bandido
@@ -120,10 +113,10 @@ TQW.Config = {
     Negotiator = {
         Enabled           = true,
         Range             = 3,       -- casillas para iniciar la negociacion
-        DemandWindowMs    = 10000,  -- plazo para tirar lo exigido
-        ComplianceRadius  = 4,      -- casillas: que tan cerca del bandido debe caer
-        ComplianceGraceMs = 180000, -- 3 min de tregua real si cumple
-        CooldownMs        = 300000, -- 5 min por bandido entre intentos
+        DemandWindowMs    = 10000,   -- 10s de plazo para tirar lo exigido
+        ComplianceRadius  = 4,       -- casillas: que tan cerca del bandido debe caer
+        ComplianceGraceMs = 180000,  -- 3 min de tregua real si cumple
+        CooldownMs        = 300000,  -- 5 min por bandido entre intentos de negociar
         IntervalMs        = 1000,
     },
 
@@ -168,10 +161,7 @@ TQW.Config = {
     },
 }
 
--- ===========================================================================
--- TABLAS ESTATICAS (creadas una vez al cargar; nunca dentro de un bucle)
--- ===========================================================================
-
+-- Tablas creadas una vez al cargar el archivo, nunca dentro de un bucle.
 -- Items de curacion aceptados, en orden de preferencia.
 TQW.MedItems = {
     "Base.Pills",           -- analgesicos
@@ -207,53 +197,53 @@ TQW.LegParts = {
     ["UpperLeg_R"] = true, ["UpperLeg_L"] = true,
 }
 
--- Lineas de dialogo. Tablas planas: BanditUtils.Choice las indexa directo.
+-- Lineas de dialogo. Guardan CLAVES de traduccion (ver
+-- Translate/EN|ES/BanditsExpansionPVC.json), resueltas con getText() en el
+-- punto de uso. BanditUtils.Choice las indexa directo, igual que antes.
 TQW.Lines = {
-    meds      = {"Aguanta... me curo y sigo.", "Solo un momento!", "Maldita sea, esto duele."},
-    sidearm   = {"A la mierda, pistola!", "Muy cerca, muy cerca!", "No hay tiempo de recargar!"},
+    meds      = {"BEP_TQW_Meds1", "BEP_TQW_Meds2", "BEP_TQW_Meds3"},
+    sidearm   = {"BEP_TQW_Sidearm1", "BEP_TQW_Sidearm2", "BEP_TQW_Sidearm3"},
+    -- getText(clave, nombre) sustituye %1 por el nombre del item exigido
+    -- (getDisplayName() del item elegido, ya localizado por el juego -- ver
+    -- PickDemandItem en Feature_Negotiator)
     negotiate = {
-        "No tienes con que dispararme! Tira %s y vive.",
-        "Estas seco, verdad? Entrega %s y te dejo ir.",
-        "Ni un paso mas. %s al suelo. Ahora.",
-        "Puedo matarte o puedes pagarme con %s. Tu decides.",
+        "BEP_TQW_Negotiate1",
+        "BEP_TQW_Negotiate2",
+        "BEP_TQW_Negotiate3",
+        "BEP_TQW_Negotiate4",
     },
-    scavenge  = {"Este ya no lo necesita.", "Buen botin...", "Vamos, agarra lo que sirva."},
-    pyro      = {"Que arda todo!", "Fuego! FUEGO!", "A ver si te gusta el calor!"},
-    radio     = {"Base, aqui equipo uno, tenemos bajas!", "Manden refuerzos, YA!", "Nos estan matando, necesitamos apoyo!"},
+    scavenge  = {"BEP_TQW_Scavenge1", "BEP_TQW_Scavenge2", "BEP_TQW_Scavenge3"},
+    pyro      = {"BEP_TQW_Pyro1", "BEP_TQW_Pyro2", "BEP_TQW_Pyro3"},
+    radio     = {"BEP_TQW_Radio1", "BEP_TQW_Radio2", "BEP_TQW_Radio3"},
 }
 
--- Textos de las notas de "Se Busca" (#28). %s = nombre del bandido.
+-- Textos de las notas de "Se Busca" (#28). nameKey/bodyKey son claves de
+-- traduccion; getText(bodyKey, nombre) sustituye %1 por el nombre del bandido.
 TQW.NoteTemplates = {
     {
-        name = "Cartel: SE BUSCA",
-        body = "SE BUSCA - VIVO O MUERTO\n\n%s\n\nBuscado por saqueo del deposito de Rosewood y por la muerte de dos de los nuestros.\n\nRECOMPENSA: 4 cajas de municion y un tanque de gasolina.\nEntregar prueba en el puesto del kilometro 12.\n\n- El Contable",
+        nameKey = "BEP_TQW_Note1Title",
+        bodyKey = "BEP_TQW_Note1Body",
     },
     {
-        name = "Carta sin enviar",
-        body = "Mama:\n\nSi lees esto es que alguien me encontro antes que tu.\nNo somos los monstruos que dicen en la radio. Al principio solo queriamos comida.\nDespues de lo de la granja... ya no se que somos.\n\nNo vengas a buscarme.\n\n%s",
+        nameKey = "BEP_TQW_Note2Title",
+        bodyKey = "BEP_TQW_Note2Body",
     },
     {
-        name = "Orden del clan",
-        body = "ORDEN PERMANENTE - LEER Y QUEMAR\n\n1. Nadie entra al perimetro sin la contrasena.\n2. Los heridos se quedan atras. Sin excepciones.\n3. Si cae uno, se avisa por radio y se replantea. NO se persigue.\n4. El que abandone su puesto responde ante mi.\n\nFirmado: %s",
+        nameKey = "BEP_TQW_Note3Title",
+        bodyKey = "BEP_TQW_Note3Body",
     },
     {
-        name = "Lista de deudas",
-        body = "LO QUE ME DEBEN:\n\n- Vic: 200 balas del .308. Muerto. Cobrado.\n- Marta: la escopeta. Se largo al norte.\n- El nuevo: nada todavia. Tiene buena punteria.\n- %s (yo): un tiro en la rodilla que me dieron por cubrirlos a todos.\n\nNadie paga nunca.",
+        nameKey = "BEP_TQW_Note4Title",
+        bodyKey = "BEP_TQW_Note4Body",
     },
 }
 
--- ===========================================================================
--- ESTADO INTERNO
--- ===========================================================================
 TQW.Enabled     = false   -- lo activa Bootstrap() si el mod base esta completo
 TQW.State       = {}      -- [banditId] = tabla de estado reutilizada
 TQW.ClanDeaths  = {}      -- [cid] = { count, firstMs, lastCallMs }
 TQW.Errors      = {}      -- [featureName] = n? de fallos acumulados
 TQW.Disabled    = {}      -- [featureName] = true si el breaker salto
 
--- ===========================================================================
--- UTILIDADES
--- ===========================================================================
 local lastLogMs = 0
 
 local function Log(msg)
@@ -350,16 +340,13 @@ local function FindItem(inventory, list)
     return nil
 end
 
--- ===========================================================================
--- ACCIONES PERSONALIZADAS
 -- Se registran como entradas NUEVAS de ZombieActions. El despachador del mod
 -- base (ProcessTask) las ejecuta igual que las suyas. Prefijo TQW para
 -- garantizar que jamas colisionan con una accion actual o futura del mod base.
--- ===========================================================================
 local function RegisterActions()
     ZombieActions = ZombieActions or {}
 
-    -- ---- Usar farmaco / vendaje (#21) ------------------------------------
+    -- Usar farmaco / vendaje (#21)
     ZombieActions.TQWUseMeds = {}
     ZombieActions.TQWUseMeds.onStart = function(zombie, task)
         -- Item "falso" en la mano solo para la animacion; el real se consume
@@ -404,7 +391,7 @@ local function RegisterActions()
         return true
     end
 
-    -- ---- Saquear un cadaver (#6) -----------------------------------------
+    -- Saquear un cadaver (#6)
     -- La accion LootItems del mod base solo mira contenedores de
     -- square:getObjects(); los cadaveres viven en getStaticMovingObjects(),
     -- por eso necesitamos accion propia en lugar de reutilizar la suya.
@@ -451,7 +438,7 @@ local function RegisterActions()
         return true
     end
 
-    -- ---- Lanzar molotov (#8) ---------------------------------------------
+    -- Lanzar molotov (#8)
     ZombieActions.TQWMolotov = {}
     ZombieActions.TQWMolotov.onStart = function(zombie, task)
         local fake = BanditCompatibility.InstanceItem(TQW.MolotovItem)
@@ -493,7 +480,7 @@ local function RegisterActions()
         return true
     end
 
-    -- ---- Llamada de refuerzos por radio (#26) ----------------------------
+    -- Llamada de refuerzos por radio (#26)
     ZombieActions.TQWRadioCall = {}
     ZombieActions.TQWRadioCall.onStart = function(zombie, task)
         if task.item then
@@ -534,9 +521,7 @@ local function RegisterActions()
     end
 end
 
--- ===========================================================================
--- SEMILLA DE INVENTARIO (#28 y soporte de #21, #8, #26)
--- ===========================================================================
+-- Semilla de inventario (#28 y soporte de #21, #8, #26).
 -- Los bandidos nacen con el inventario VIVO vacio (brain.inventory = {} en
 -- BanditServerSpawner); todo su botin se genera al morir. Sin esta semilla,
 -- las mecanicas que dependen de llevar objetos encima nunca se dispararian.
@@ -575,13 +560,13 @@ local function SeedInventory(bandit, brain)
         local item = BanditCompatibility.InstanceItem(Choice(TQW.NoteItems))
         if item then
             local tpl  = Choice(TQW.NoteTemplates)
-            local name = brain.fullname or "un desconocido"
+            local name = brain.fullname or getText("BEP_TQW_UnknownBandit")
             -- Mismo patron que usa el juego al escribir un cuaderno
             -- (ISInventoryPaneContextMenu.onWriteSomethingClick):
             -- addPage + setName + setCustomName. Si el item elegido no
             -- soportara paginas, el pcall degrada a una nota solo renombrada.
-            pcall(item.addPage, item, 1, string_format(tpl.body, name))
-            item:setName(tpl.name)
+            pcall(item.addPage, item, 1, getText(tpl.bodyKey, name))
+            item:setName(getText(tpl.nameKey))
             pcall(item.setCustomName, item, true)
             inventory:AddItem(item)
             added = true
@@ -593,15 +578,10 @@ local function SeedInventory(bandit, brain)
     end
 end
 
--- ===========================================================================
--- MECANICAS
--- ===========================================================================
-
---[[ #21 - AUTO-ADMINISTRACION DE FARMACOS -----------------------------------
-     El mod base ya encola una tarea "Bandage" cuando corresponde (ManageCombat).
-     Esto es la capa complementaria: pastillas/analgesicos con recuperacion de
-     vida real, fuera del flujo de vendaje.
---]]
+-- #21 - AUTO-ADMINISTRACION DE FARMACOS. El mod base ya encola una tarea
+-- "Bandage" cuando corresponde (ManageCombat); esto es la capa
+-- complementaria: pastillas/analgesicos con recuperacion de vida real, fuera
+-- del flujo de vendaje.
 local function Feature_Meds(bandit, brain, state, now)
     local cfg = TQW.Config.Meds
     if not cfg.Enabled then return end
@@ -630,19 +610,16 @@ local function Feature_Meds(bandit, brain, state, now)
         time   = 250,
         lock   = true,
     })
-    TQW.Chat(bandit, Choice(TQW.Lines.meds))
+    TQW.Chat(bandit, getText(Choice(TQW.Lines.meds)))
     Log("Meds: usando " .. itemType)
 end
 
---[[ #16 - CAMBIO A ARMA CORTA -----------------------------------------------
-     IMPORTANTE: el mod base YA cambia al arma secundaria cuando la primaria se
-     queda sin balas (ManageCombat, ~lineas 1028 y 1119). Reimplementarlo seria
-     duplicar y pelearse con el.
-     Lo que aporta esta capa es el matiz que pedia el brief: a quemarropa el
-     bandido NO se queda recargando delante del jugador, desenfunda de
-     inmediato. Solo actuamos dentro de PanicRange; fuera de eso mandan las
-     reglas del mod base.
---]]
+-- #16 - CAMBIO A ARMA CORTA. IMPORTANTE: el mod base YA cambia al arma
+-- secundaria cuando la primaria se queda sin balas (ManageCombat, ~lineas
+-- 1028 y 1119); reimplementarlo seria duplicar y pelearse con el. Lo que
+-- aporta esta capa es el matiz que pedia el brief: a quemarropa el bandido
+-- NO se queda recargando delante del jugador, desenfunda de inmediato. Solo
+-- actuamos dentro de PanicRange; fuera de eso mandan las reglas del mod base.
 local function Feature_Sidearm(bandit, brain, state, now)
     local cfg = TQW.Config.Sidearm
     if not cfg.Enabled then return end
@@ -678,18 +655,16 @@ local function Feature_Sidearm(bandit, brain, state, now)
     for i = 1, #tasks do
         Bandit.AddTask(bandit, tasks[i])
     end
-    TQW.Chat(bandit, Choice(TQW.Lines.sidearm))
+    TQW.Chat(bandit, getText(Choice(TQW.Lines.sidearm)))
     Log("Sidearm: cambio de emergencia a " .. secondary.name)
 end
 
---[[ #13 - LINTERNAS NOCTURNAS -----------------------------------------------
-     El mod base ya tiene el sistema completo: SandboxVars.Bandits.General_CarryTorches,
-     el flag brain.torch y ManageTorch(), que proyecta el cono de luz cada tick.
-     Lo unico que falta es que un bandido que lleva linterna encima y NO nacio
-     con brain.torch la encienda al anochecer. Eso es lo que hacemos: activar el
-     flag que el motor del mod base ya sabe consumir. No duplicamos ni una linea
-     del renderizado de luz.
---]]
+-- #13 - LINTERNAS NOCTURNAS. El mod base ya tiene el sistema completo:
+-- SandboxVars.Bandits.General_CarryTorches, el flag brain.torch y
+-- ManageTorch(), que proyecta el cono de luz cada tick. Lo unico que falta
+-- es que un bandido que lleva linterna encima y NO nacio con brain.torch la
+-- encienda al anochecer: activamos el flag que el motor ya sabe consumir,
+-- sin duplicar ni una linea del renderizado de luz.
 local function Feature_Torch(bandit, brain, state, now)
     local cfg = TQW.Config.Torch
     if not cfg.Enabled then return end
@@ -722,15 +697,13 @@ local function Feature_Torch(bandit, brain, state, now)
     Log("Torch: linterna encendida")
 end
 
---[[ #18 - HERIDAS VISIBLES Y COJERA -----------------------------------------
-     Los bandidos son IsoZombie reciclados: NO tienen BodyDamage por miembro,
-     asi que no existe "salud de las piernas" que consultar, y setLimping() (que
-     es de IsoPlayer) no tendria efecto.
-     La palanca correcta es la variable "BanditWalkType": el mod base la lee y
-     la aplica con setWalkType() en CADA tick (BanditUpdate ~2058), asi que
-     escribir la variable si persiste. Contamos los impactos en piernas via
-     OnHitZombie, que si entrega el bodyPartType.
---]]
+-- #18 - HERIDAS VISIBLES Y COJERA. Los bandidos son IsoZombie reciclados: NO
+-- tienen BodyDamage por miembro, asi que no existe "salud de las piernas"
+-- que consultar, y setLimping() (que es de IsoPlayer) no tendria efecto. La
+-- palanca correcta es la variable "BanditWalkType": el mod base la lee y la
+-- aplica con setWalkType() en CADA tick (BanditUpdate ~2058), asi que
+-- escribir la variable si persiste. Contamos los impactos en piernas via
+-- OnHitZombie, que si entrega el bodyPartType.
 local function Feature_Limp(bandit, brain, state, now)
     local cfg = TQW.Config.Limp
     if not cfg.Enabled then return end
@@ -755,30 +728,24 @@ local function Feature_Limp(bandit, brain, state, now)
     end
 end
 
---[[ #7 - EL NEGOCIADOR / EXTORSIONADOR --------------------------------------
-     Si el jugador esta desarmado o sin municion y a menos de N casillas, el
-     bandido baja el arma, exige un ITEM ESPECIFICO que ve en el inventario
-     del jugador (no un generico "entrega el equipo"), y de verdad comprueba
-     que lo haya tirado cerca antes de perdonarlo.
-
-     COMPROBACION DE CUMPLIMIENTO: guardamos la referencia AL ITEM EXACTO que
-     se exigio (state.tqwDemandItem, ver mas abajo). item:getWorldItem()
-     devuelve el IsoWorldInventoryObject que lo envuelve si esta tirado en el
-     mundo, o nil si sigue en un contenedor (confirmado contra el patron real
-     que usa el juego: "if not alarm:getWorldItem() and (alarm:getContainer()
-     ~= playerObj:getInventory())" en ISInventoryPaneContextMenu.lua). Si esta
-     tirado Y cerca del bandido, se considera pagado.
-
-     OJO: state.tqwDemandItem es una referencia a un objeto vivo del motor, NO
-     un numero/booleano simple -- por eso vive en `state` (nuestra tabla de
-     runtime, TQW.State) y NUNCA en `brain` (que el mod base serializa a texto
-     plano en cada guardado; meter ahi un objeto solo ensuciaria el save).
-
-     La pausa se implementa apagando la hostilidad (que es lo que consulta el
-     selector de objetivos del mod base) y programando su restauracion en el
-     propio brain, de modo que sobrevive a que el chunk se descargue: si el
-     bandido desaparece a mitad de la negociacion, al volver se restaura sola.
---]]
+-- #7 - EL NEGOCIADOR / EXTORSIONADOR. Si el jugador esta desarmado o sin
+-- municion y a menos de N casillas, el bandido baja el arma, exige un ITEM
+-- ESPECIFICO que ve en el inventario del jugador (no un generico "entrega el
+-- equipo"), y de verdad comprueba que lo haya tirado cerca antes de
+-- perdonarlo.
+--
+-- COMPROBACION DE CUMPLIMIENTO: guardamos la referencia AL ITEM EXACTO que
+-- se exigio (state.tqwDemandItem, ver mas abajo). item:getWorldItem()
+-- devuelve el IsoWorldInventoryObject que lo envuelve si esta tirado en el
+-- mundo, o nil si sigue en un contenedor (confirmado contra el patron real
+-- que usa el juego: "if not alarm:getWorldItem() and (alarm:getContainer()
+-- ~= playerObj:getInventory())" en ISInventoryPaneContextMenu.lua). Si esta
+-- tirado Y cerca del bandido, se considera pagado.
+--
+-- OJO: state.tqwDemandItem es una referencia a un objeto vivo del motor, NO
+-- un numero/booleano simple -- por eso vive en `state` (nuestra tabla de
+-- runtime, TQW.State) y NUNCA en `brain` (que el mod base serializa a texto
+-- plano en cada guardado; meter ahi un objeto solo ensuciaria el save).
 local DEMAND_CATEGORY_PRIORITY = {"Weapon", "Ammo", "FirstAid", "Food"}
 
 -- Recorre el inventario del jugador SOLO al arrancar una negociacion (evento
@@ -816,6 +783,7 @@ local function PickDemandItem(player)
     if count == 0 then return nil end
     return any[ZombRand(count) + 1]
 end
+
 local function IsPlayerHelpless(player)
     local item = player:getPrimaryHandItem()
     if not item then return true end
@@ -842,6 +810,7 @@ local function CheckDemandComplied(bandit, item, radiusSq)
     local dx, dy = wx - bandit:getX(), wy - bandit:getY()
     return (dx * dx + dy * dy) <= radiusSq
 end
+
 local function Feature_Negotiator(bandit, brain, state, now)
     local cfg = TQW.Config.Negotiator
     if not cfg.Enabled then return end
@@ -858,13 +827,13 @@ local function Feature_Negotiator(bandit, brain, state, now)
         if complied then
             -- cumplio: tregua bastante mas larga, no vuelve a atacar de una
             brain.tqwHostileUntil = now + cfg.ComplianceGraceMs
-            TQW.Chat(bandit, "Buen trato. No dispares y no disparo.")
+            TQW.Chat(bandit, getText("BEP_TQW_NegotiateSuccess"))
             Log("Negotiator: cumplio, tregua extendida")
         else
             brain.hostile  = brain.tqwHostileOld  or false
             brain.hostileP = brain.tqwHostilePOld or false
             brain.tqwHostileUntil = nil
-            TQW.Chat(bandit, "No entregaste nada. Se acabo la charla.")
+            TQW.Chat(bandit, getText("BEP_TQW_NegotiateFail"))
             Log("Negotiator: no cumplio, hostilidad restaurada")
         end
 
@@ -887,6 +856,7 @@ local function Feature_Negotiator(bandit, brain, state, now)
 
     local demandItem = PickDemandItem(player)
     if not demandItem then return end   -- no lleva nada que valga la pena exigir
+
     SetCooldown(state, "negotiator", now, cfg.CooldownMs)
 
     -- guardamos el estado original para poder devolverlo tal cual
@@ -906,18 +876,17 @@ local function Feature_Negotiator(bandit, brain, state, now)
 
     -- ~300 unidades de tarea equivalen a ~5 s a 60 FPS
     Bandit.AddTask(bandit, {action = "Time", anim = "ShiftWeight", time = 300, lock = true})
+
     local template = Choice(TQW.Lines.negotiate)
     if template then
-        TQW.Chat(bandit, string.format(template, state.tqwDemandName))
+        TQW.Chat(bandit, getText(template, state.tqwDemandName))
     end
     Log("Negotiator: exigiendo " .. state.tqwDemandName)
 end
 
---[[ #6 - EL OPORTUNISTA / CARRONERO -----------------------------------------
-     Rol: usamos la especialidad Thief que YA existe en el mod base
-     (Bandit.Expertise.Thief), en lugar de inventar un rol paralelo que el
-     spawner nunca asignaria.
---]]
+-- #6 - EL OPORTUNISTA / CARRONERO. Usamos la especialidad Thief que YA
+-- existe en el mod base (Bandit.Expertise.Thief), en lugar de inventar un
+-- rol paralelo que el spawner nunca asignaria.
 local function Feature_Scavenger(bandit, brain, state, now)
     local cfg = TQW.Config.Scavenger
     if not cfg.Enabled then return end
@@ -991,16 +960,15 @@ local function Feature_Scavenger(bandit, brain, state, now)
         end
     end
 
-    TQW.Chat(bandit, Choice(TQW.Lines.scavenge))
+    TQW.Chat(bandit, getText(Choice(TQW.Lines.scavenge)))
     Log("Scavenger: saqueando cadaver")
 end
 
---[[ #8 - EL PIROMANIACO -----------------------------------------------------
-     Rol: no existe una especialidad "piromano" en el mod base, asi que la
-     derivamos de forma DETERMINISTA de brain.rnd (el vector de aleatoriedad
-     que el spawner asigna a cada bandido). Asi el mismo bandido es siempre
-     piromano entre sesiones, sin tocar el spawner ni el formato del brain.
---]]
+-- #8 - EL PIROMANIACO. No existe una especialidad "piromano" en el mod
+-- base, asi que la derivamos de forma DETERMINISTA de brain.rnd (el vector
+-- de aleatoriedad que el spawner asigna a cada bandido). Asi el mismo
+-- bandido es siempre piromano entre sesiones, sin tocar el spawner ni el
+-- formato del brain.
 local function IsPyro(brain)
     -- brain.rnd = {ZombRand(2), ZombRand(10), ZombRand(100), ...}
     return brain.rnd and brain.rnd[3] ~= nil and (brain.rnd[3] % 5) == 0
@@ -1048,15 +1016,14 @@ local function Feature_Pyro(bandit, brain, state, now)
         action = "TQWMolotov", anim = "Shove", time = 120,
         x = math_floor(player:getX()), y = math_floor(player:getY()), z = player:getZ(),
     })
-    TQW.Chat(bandit, Choice(TQW.Lines.pyro))
+    TQW.Chat(bandit, getText(Choice(TQW.Lines.pyro)))
     Log("Pyro: lanzando molotov")
 end
 
---[[ #26 - PETICION DE REFUERZOS POR RADIO -----------------------------------
-     "Lider" = el bandido que lleva la radio (el spawner del mod base no tiene
-     concepto de jerarquia, asi que el objeto ES el rol).
-     El conteo de bajas por clan lo lleva OnZombieDead mas abajo.
---]]
+-- #26 - PETICION DE REFUERZOS POR RADIO. "Lider" = el bandido que lleva la
+-- radio (el spawner del mod base no tiene concepto de jerarquia, asi que el
+-- objeto ES el rol). El conteo de bajas por clan lo lleva OnZombieDead mas
+-- abajo.
 local function Feature_Radio(bandit, brain, state, now)
     local cfg = TQW.Config.Radio
     if not cfg.Enabled then return end
@@ -1099,13 +1066,11 @@ local function Feature_Radio(bandit, brain, state, now)
         sy = math_floor(by + (vy / len) * d),
         sz = bz,
     })
-    TQW.Chat(bandit, Choice(TQW.Lines.radio))
+    TQW.Chat(bandit, getText(Choice(TQW.Lines.radio)))
     Log("Radio: pidiendo refuerzos para el clan " .. tostring(cid))
 end
 
--- ===========================================================================
--- REGISTRO DE MECANICAS (array fijo: se recorre con for numerico, sin iteradores)
--- ===========================================================================
+-- Array fijo: se recorre con for numerico, sin iteradores.
 local FEATURES = {
     {name = "Meds",       fn = Feature_Meds},
     {name = "Sidearm",    fn = Feature_Sidearm},
@@ -1117,10 +1082,6 @@ local FEATURES = {
     {name = "Radio",      fn = Feature_Radio},
 }
 local FEATURE_COUNT = #FEATURES
-
--- ===========================================================================
--- HANDLERS DE EVENTOS
--- ===========================================================================
 
 -- Tick principal. El nucleo compartido (00_TacticalCore) ya hizo el trabajo
 -- caro una sola vez para los tres modulos: filtrar que sea bandido, sacar el
@@ -1207,10 +1168,8 @@ local function CleanupState()
     end
 end
 
--- ===========================================================================
--- GUARDA DEFENSIVA SOBRE BanditBrain.Update
--- ===========================================================================
--- No es el tick de IA (ver cabecera), pero es global y otros sub-mods pueden
+-- Guarda defensiva sobre BanditBrain.Update: no es el tick de IA (ver
+-- cabecera), pero es global y otros sub-mods pueden
 -- llamarla. La envolvemos para que un fallo ahi no propague una excepcion al
 -- bucle de zombis del motor, que es lo que congela la partida.
 local function InstallBrainGuard()
@@ -1225,10 +1184,6 @@ local function InstallBrainGuard()
     end
     Log("Guarda instalada sobre BanditBrain.Update")
 end
-
--- ===========================================================================
--- ARRANQUE
--- ===========================================================================
 
 -- Comprobamos una por una las piezas del mod base que realmente usamos. Si
 -- falta cualquiera (mod desactivado, version incompatible, orden de carga mal),
@@ -1361,3 +1316,4 @@ Events.OnGameStart.Add(function()
         print("[TQW] Sub-mod INACTIVO por error en el arranque.")
     end
 end)
+
