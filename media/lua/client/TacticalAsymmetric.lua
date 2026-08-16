@@ -96,7 +96,7 @@ TA2.Config = {
         ExplodePower   = 100,   -- misma potencia que usa el juego base
         -- Clave de traduccion (ver Translate/EN|ES/BanditsExpansionPVC.json),
         -- resuelta con getText() en OnEvaristoDead.
-        LineKey = "BEP_TA2_EvaristoLastWords",
+        LineKey = "UI_BEP_TA2_EvaristoLastWords",
     },
 
     FakeSurrender = {
@@ -287,7 +287,7 @@ local function Feature_FakeSurrender(zombie, brain, id, now, dist2, player, stat
         Bandit.ClearTasks(zombie)
         zombie:setTarget(nil)
         zombie:clearAggroList()
-        SayLine(zombie, getText("BEP_TA2_SurrenderFake"))
+        SayLine(zombie, getText("UI_BEP_TA2_SurrenderFake"))
         Log("Rendicion falsa: activada (id=" .. tostring(id) .. ")")
         return
     end
@@ -318,7 +318,7 @@ local function Feature_FakeSurrender(zombie, brain, id, now, dist2, player, stat
         for i = 1, #tasks do Bandit.AddTask(zombie, tasks[i]) end
     end
     zombie:setTarget(player)
-    SayLine(zombie, getText("BEP_TA2_SurrenderBetray"))
+    SayLine(zombie, getText("UI_BEP_TA2_SurrenderBetray"))
     Log("Rendicion falsa: TRAICION (id=" .. tostring(id) .. ")")
 end
 
@@ -350,7 +350,7 @@ local function Feature_HordeBait(zombie, brain, id, now, dist2, player, state)
     local ok2, err = pcall(addSound, zombie, px, py, pz, cfg.NoiseRadius, cfg.NoiseVolume)
     if not ok2 then LogError("HordeBait addSound", err) end
 
-    SayLine(zombie, getText("BEP_TA2_HordeBaitTaunt"))
+    SayLine(zombie, getText("UI_BEP_TA2_HordeBaitTaunt"))
     Log("Trampa de horda: ruido en la posicion del jugador (id=" .. tostring(id) .. ")")
 end
 

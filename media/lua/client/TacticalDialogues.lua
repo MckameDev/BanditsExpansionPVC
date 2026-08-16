@@ -52,14 +52,14 @@ TD.Config.HearingRangeSq = TD.Config.HearingRange * TD.Config.HearingRange
 -- punto de uso (ver media/lua/shared/Translate/EN|ES/BanditsExpansionPVC.json).
 TD.Lines = {
     tookDamage = {
-        "BEP_TD_Dmg1", "BEP_TD_Dmg2", "BEP_TD_Dmg3", "BEP_TD_Dmg4", "BEP_TD_Dmg5",
+        "UI_BEP_TD_Dmg1", "UI_BEP_TD_Dmg2", "UI_BEP_TD_Dmg3", "UI_BEP_TD_Dmg4", "UI_BEP_TD_Dmg5",
     },
     reloading = {
-        "BEP_TD_Reload1", "BEP_TD_Reload2", "BEP_TD_Reload3", "BEP_TD_Reload4",
+        "UI_BEP_TD_Reload1", "UI_BEP_TD_Reload2", "UI_BEP_TD_Reload3", "UI_BEP_TD_Reload4",
     },
     -- getText(clave, nombre) sustituye %1 por el nombre del aliado caido (brain.fullname)
     allyDied = {
-        "BEP_TD_AllyDied1", "BEP_TD_AllyDied2", "BEP_TD_AllyDied3", "BEP_TD_AllyDied4",
+        "UI_BEP_TD_AllyDied1", "UI_BEP_TD_AllyDied2", "UI_BEP_TD_AllyDied3", "UI_BEP_TD_AllyDied4",
     },
 }
 
@@ -130,7 +130,7 @@ local function BroadcastAllyDeath(deadBandit, deadBrain)
     local clan = deadBrain.clan or deadBrain.cid
     if clan == nil then return end
 
-    local victimName = deadBrain.fullname or getText("BEP_TD_Unknown")
+    local victimName = deadBrain.fullname or getText("UI_BEP_TD_Unknown")
     local line = PickLine(TD.Lines.allyDied)
     if not line then return end
     local text = getText(line, victimName)
@@ -187,7 +187,7 @@ local function OnZombieUpdate(zombie, brain, id, now, dist2, player)
     if isReloading then
         if not TD.Reloading[id] then
             TD.Reloading[id] = true
-            TD.Say(zombie, id, PickLine(TD.Lines.reloading))
+            TD.Say(zombie, id, getText(PickLine(TD.Lines.reloading)))
         end
     elseif TD.Reloading[id] then
         TD.Reloading[id] = nil   -- termino la recarga: rearmamos el aviso

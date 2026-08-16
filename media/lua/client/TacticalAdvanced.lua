@@ -46,8 +46,6 @@ TA.VERSION = "1.0.0"
 
 local getTimestampMs = getTimestampMs
 local getSpecificPlayer = getSpecificPlayer
-local ZombRand        = ZombRand
-local ZombRandFloat    = ZombRandFloat
 local pcall            = pcall
 local pairs            = pairs
 local math_sqrt        = math.sqrt
@@ -219,7 +217,7 @@ local function OnSquadmateDeath(deadZombie, deadBrain, deadId)
             local ok, err = pcall(MakeFurious, survivors[i].zombie, survivors[i].brain)
             if not ok then LogError("MakeFurious", err) end
             if not shouted then
-                Shout(survivors[i].zombie, getText("BEP_TA_CaptainDown"), 1, 0.1, 0.1)
+                Shout(survivors[i].zombie, getText("UI_BEP_TA_CaptainDown"), 1, 0.1, 0.1)
                 shouted = true
             end
         end

@@ -60,7 +60,6 @@ TQW.VERSION = "1.0.0"
 
 local getTimestampMs   = getTimestampMs
 local getSpecificPlayer= getSpecificPlayer
-local getGameTime      = getGameTime
 local getWorld         = getWorld
 local getCell          = getCell
 local ZombRand         = ZombRand
@@ -201,40 +200,40 @@ TQW.LegParts = {
 -- Translate/EN|ES/BanditsExpansionPVC.json), resueltas con getText() en el
 -- punto de uso. BanditUtils.Choice las indexa directo, igual que antes.
 TQW.Lines = {
-    meds      = {"BEP_TQW_Meds1", "BEP_TQW_Meds2", "BEP_TQW_Meds3"},
-    sidearm   = {"BEP_TQW_Sidearm1", "BEP_TQW_Sidearm2", "BEP_TQW_Sidearm3"},
+    meds      = {"UI_BEP_TQW_Meds1", "UI_BEP_TQW_Meds2", "UI_BEP_TQW_Meds3"},
+    sidearm   = {"UI_BEP_TQW_Sidearm1", "UI_BEP_TQW_Sidearm2", "UI_BEP_TQW_Sidearm3"},
     -- getText(clave, nombre) sustituye %1 por el nombre del item exigido
     -- (getDisplayName() del item elegido, ya localizado por el juego -- ver
     -- PickDemandItem en Feature_Negotiator)
     negotiate = {
-        "BEP_TQW_Negotiate1",
-        "BEP_TQW_Negotiate2",
-        "BEP_TQW_Negotiate3",
-        "BEP_TQW_Negotiate4",
+        "UI_BEP_TQW_Negotiate1",
+        "UI_BEP_TQW_Negotiate2",
+        "UI_BEP_TQW_Negotiate3",
+        "UI_BEP_TQW_Negotiate4",
     },
-    scavenge  = {"BEP_TQW_Scavenge1", "BEP_TQW_Scavenge2", "BEP_TQW_Scavenge3"},
-    pyro      = {"BEP_TQW_Pyro1", "BEP_TQW_Pyro2", "BEP_TQW_Pyro3"},
-    radio     = {"BEP_TQW_Radio1", "BEP_TQW_Radio2", "BEP_TQW_Radio3"},
+    scavenge  = {"UI_BEP_TQW_Scavenge1", "UI_BEP_TQW_Scavenge2", "UI_BEP_TQW_Scavenge3"},
+    pyro      = {"UI_BEP_TQW_Pyro1", "UI_BEP_TQW_Pyro2", "UI_BEP_TQW_Pyro3"},
+    radio     = {"UI_BEP_TQW_Radio1", "UI_BEP_TQW_Radio2", "UI_BEP_TQW_Radio3"},
 }
 
 -- Textos de las notas de "Se Busca" (#28). nameKey/bodyKey son claves de
 -- traduccion; getText(bodyKey, nombre) sustituye %1 por el nombre del bandido.
 TQW.NoteTemplates = {
     {
-        nameKey = "BEP_TQW_Note1Title",
-        bodyKey = "BEP_TQW_Note1Body",
+        nameKey = "UI_BEP_TQW_Note1Title",
+        bodyKey = "UI_BEP_TQW_Note1Body",
     },
     {
-        nameKey = "BEP_TQW_Note2Title",
-        bodyKey = "BEP_TQW_Note2Body",
+        nameKey = "UI_BEP_TQW_Note2Title",
+        bodyKey = "UI_BEP_TQW_Note2Body",
     },
     {
-        nameKey = "BEP_TQW_Note3Title",
-        bodyKey = "BEP_TQW_Note3Body",
+        nameKey = "UI_BEP_TQW_Note3Title",
+        bodyKey = "UI_BEP_TQW_Note3Body",
     },
     {
-        nameKey = "BEP_TQW_Note4Title",
-        bodyKey = "BEP_TQW_Note4Body",
+        nameKey = "UI_BEP_TQW_Note4Title",
+        bodyKey = "UI_BEP_TQW_Note4Body",
     },
 }
 
@@ -560,7 +559,7 @@ local function SeedInventory(bandit, brain)
         local item = BanditCompatibility.InstanceItem(Choice(TQW.NoteItems))
         if item then
             local tpl  = Choice(TQW.NoteTemplates)
-            local name = brain.fullname or getText("BEP_TQW_UnknownBandit")
+            local name = brain.fullname or getText("UI_BEP_TQW_UnknownBandit")
             -- Mismo patron que usa el juego al escribir un cuaderno
             -- (ISInventoryPaneContextMenu.onWriteSomethingClick):
             -- addPage + setName + setCustomName. Si el item elegido no
@@ -827,13 +826,13 @@ local function Feature_Negotiator(bandit, brain, state, now)
         if complied then
             -- cumplio: tregua bastante mas larga, no vuelve a atacar de una
             brain.tqwHostileUntil = now + cfg.ComplianceGraceMs
-            TQW.Chat(bandit, getText("BEP_TQW_NegotiateSuccess"))
+            TQW.Chat(bandit, getText("UI_BEP_TQW_NegotiateSuccess"))
             Log("Negotiator: cumplio, tregua extendida")
         else
             brain.hostile  = brain.tqwHostileOld  or false
             brain.hostileP = brain.tqwHostilePOld or false
             brain.tqwHostileUntil = nil
-            TQW.Chat(bandit, getText("BEP_TQW_NegotiateFail"))
+            TQW.Chat(bandit, getText("UI_BEP_TQW_NegotiateFail"))
             Log("Negotiator: no cumplio, hostilidad restaurada")
         end
 

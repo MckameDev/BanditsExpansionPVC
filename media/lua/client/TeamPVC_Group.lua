@@ -200,20 +200,20 @@ local OUTFIT_CHISPA = {
 -- Guardan CLAVES de traduccion (ver Translate/EN|ES/BanditsExpansionPVC.json),
 -- resueltas con getText() en cada punto de uso.
 TeamPVC.ChispaLines = {
-    warn60  = "BEP_PVC_ChispaWarn60",
-    warn30  = "BEP_PVC_ChispaWarn30",
-    warn10  = "BEP_PVC_ChispaWarn10",
-    warn5   = "BEP_PVC_ChispaWarn5",
-    boom    = "BEP_PVC_ChispaBoom",
+    warn60  = "UI_BEP_PVC_ChispaWarn60",
+    warn30  = "UI_BEP_PVC_ChispaWarn30",
+    warn10  = "UI_BEP_PVC_ChispaWarn10",
+    warn5   = "UI_BEP_PVC_ChispaWarn5",
+    boom    = "UI_BEP_PVC_ChispaBoom",
 }
 
 -- Pool "aplanado": la frase comica aparece dos veces, asi el peso doble sale
 -- gratis con un solo ZombRand y sin construir tablas en tiempo de ejecucion.
 TeamPVC.Phrases = {
-    "BEP_PVC_Phrase1",
-    "BEP_PVC_Phrase2",
-    "BEP_PVC_Phrase3",
-    "BEP_PVC_Phrase3",   -- peso doble, a proposito
+    "UI_BEP_PVC_Phrase1",
+    "UI_BEP_PVC_Phrase2",
+    "UI_BEP_PVC_Phrase3",
+    "UI_BEP_PVC_Phrase3",   -- peso doble, a proposito
 }
 
 -- Presentacion: UNA frase propia por integrante, con su nombre, indexada por
@@ -221,13 +221,13 @@ TeamPVC.Phrases = {
 -- vez que cada bandido grita (ver brain.pvcIntroduced en ShoutRandom) -- y
 -- despues pasan al pool generico de arriba como cualquier otro grito.
 TeamPVC.MemberIntroLines = {
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de101"] = "BEP_PVC_IntroMauricio",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de102"] = "BEP_PVC_IntroNealcito",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de103"] = "BEP_PVC_IntroKhris",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de104"] = "BEP_PVC_IntroNep",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"] = "BEP_PVC_IntroEvaristo",
-    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de106"] = "BEP_PVC_IntroGaston",
-    [TeamPVC.CHISPA_BID]                     = "BEP_PVC_IntroChispa",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de101"] = "UI_BEP_PVC_IntroMauricio",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de102"] = "UI_BEP_PVC_IntroNealcito",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de103"] = "UI_BEP_PVC_IntroKhris",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de104"] = "UI_BEP_PVC_IntroNep",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de105"] = "UI_BEP_PVC_IntroEvaristo",
+    ["9f1c7a20-b9c0-4e11-9a3d-7ea55c0de106"] = "UI_BEP_PVC_IntroGaston",
+    [TeamPVC.CHISPA_BID]                     = "UI_BEP_PVC_IntroChispa",
 }
 
 local lastErrorMs = 0
@@ -1077,17 +1077,17 @@ local function OnFillWorldObjectContextMenu(playerNum, context, worldobjects, te
         end
     end
 
-    local parent  = context:addOption(getText("BEP_PVC_DebugMenu"), worldobjects, nil)
+    local parent  = context:addOption(getText("UI_BEP_PVC_DebugMenu"), worldobjects, nil)
     local subMenu = context:getNew(context)
     context:addSubMenu(parent, subMenu)
 
-    subMenu:addOption(getText("BEP_PVC_DebugSpawnElite"), worldobjects, OnSpawnAtPlayer)
-    subMenu:addOption(getText("BEP_PVC_DebugSpawnChispa"), worldobjects, OnSpawnWithChispa)
+    subMenu:addOption(getText("UI_BEP_PVC_DebugSpawnElite"), worldobjects, OnSpawnAtPlayer)
+    subMenu:addOption(getText("UI_BEP_PVC_DebugSpawnChispa"), worldobjects, OnSpawnWithChispa)
     if square then
-        subMenu:addOption(getText("BEP_PVC_DebugSpawnHere"), worldobjects, OnSpawnHere, square)
+        subMenu:addOption(getText("UI_BEP_PVC_DebugSpawnHere"), worldobjects, OnSpawnHere, square)
     end
-    subMenu:addOption(getText("BEP_PVC_DebugReinject"), worldobjects, OnReinject)
-    subMenu:addOption(getText("BEP_PVC_DebugDiagnose"), worldobjects, OnDiagnose)
+    subMenu:addOption(getText("UI_BEP_PVC_DebugReinject"), worldobjects, OnReinject)
+    subMenu:addOption(getText("UI_BEP_PVC_DebugDiagnose"), worldobjects, OnDiagnose)
 end
 
 local function Bootstrap()
