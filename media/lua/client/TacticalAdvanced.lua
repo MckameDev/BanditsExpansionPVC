@@ -344,8 +344,12 @@ local function RegisterActions()
             return true
         end
 
+        -- MULTIJUGADOR: la vida del aliado la aplica solo la autoridad. Si la
+        -- sumara cada cliente, la curacion se multiplicaria por el numero de
+        -- jugadores conectados (la salud SI se sincroniza en el mod base, via
+        -- BanditServer.Sync.Health, asi que se acumularia de verdad).
         local allyBrain = BanditBrain.Get(ally)
-        if allyBrain then
+        if allyBrain and not (type(PVCCore) == "table" and PVCCore.NotWorldAuthority()) then
             local maxHealth = allyBrain.health or 1
             local health = ally:getHealth() + (task.healAmount or 0.4)
             if health > maxHealth then health = maxHealth end

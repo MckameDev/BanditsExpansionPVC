@@ -83,10 +83,6 @@ local function LogError(where, err)
     print("[TacticalDialogues][ERROR] " .. tostring(where) .. ": " .. tostring(err))
 end
 
-local function Log(msg)
-    if TD.Config.Debug then print("[TacticalDialogues] " .. tostring(msg)) end
-end
-
 local function PickLine(pool)
     if not pool or #pool == 0 then return nil end
     return pool[ZombRand(#pool) + 1]

@@ -199,9 +199,9 @@
 	clothing: Hat = Base.Hat_BaseballCap
 	clothing: Jacket = Base.Jacket_Leather
 	clothing: Pants = Base.Trousers_Denim
-	clothing: Shoes = Base.Shoes_Trainers
+	clothing: Shoes = Base.Shoes_BlueTrainers
 	clothing: Socks = Base.Socks_Ankle_White
-	clothing: Tshirt = Base.Tshirt_White
+	clothing: Tshirt = Base.Tshirt_WhiteTINT
 	clothing: UnderwearBottom = Base.Briefs_White
 	weapons: melee = Base.BaseballBat
 
@@ -222,9 +222,9 @@
 	general: exp2 = 0
 	general: exp3 = 0
 	clothing: Pants = Base.Trousers_Denim
-	clothing: Shoes = Base.Shoes_Trainers
+	clothing: Shoes = Base.Shoes_BlueTrainers
 	clothing: Socks = Base.Socks_Ankle_White
-	clothing: Tshirt = Base.Tshirt_Black
+	clothing: Tshirt = Base.Tshirt_OliveDrab
 	clothing: UnderwearBottom = Base.Briefs_White
 	weapons: melee = Base.HuntingKnife
 	weapons: primary = Base.Shotgun
@@ -248,9 +248,9 @@
 	general: exp3 = 0
 	clothing: Jacket = Base.Jacket_Leather
 	clothing: Pants = Base.Trousers_Denim
-	clothing: Shoes = Base.Shoes_Trainers
+	clothing: Shoes = Base.Shoes_BlueTrainers
 	clothing: Socks = Base.Socks_Ankle_White
-	clothing: Tshirt = Base.Tshirt_Red
+	clothing: Tshirt = Base.Tshirt_PoloTINT
 	clothing: UnderwearBottom = Base.Underpants_White
 	clothing: UnderwearTop = Base.Bra_Straps_White
 	weapons: melee = Base.HuntingKnife
@@ -275,8 +275,8 @@
 	general: exp3 = 0
 	clothing: Hat = Base.Hat_BaseballCap
 	clothing: Pants = Base.Trousers_Denim
-	clothing: Shoes = Base.Shoes_Trainers
+	clothing: Shoes = Base.Shoes_BlueTrainers
 	clothing: Socks = Base.Socks_Ankle_White
-	clothing: Tshirt = Base.Tshirt_White
+	clothing: Tshirt = Base.Tshirt_WhiteTINT
 	clothing: UnderwearBottom = Base.Briefs_White
 	weapons: melee = Base.Crowbar

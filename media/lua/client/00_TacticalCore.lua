@@ -115,6 +115,68 @@ local function GetPlayer(now)
     return p
 end
 
+-- ---------------------------------------------------------------------------
+-- AUTORIDAD DE SPAWN (multijugador)
+-- ---------------------------------------------------------------------------
+-- Todo lo que CREA cosas en el mundo (spawnear un clan, colocar un bloqueo,
+-- registrar un alijo) debe decidirlo UNA sola maquina. Si no, con 4 amigos
+-- conectados salen 4 bloqueos y 4 emboscadas para el mismo evento.
+--
+-- OJO con el modo Anfitrion: NO es como single player. Al hostear, el juego
+-- levanta un proceso servidor interno (CoopServer) y tu propia partida se
+-- conecta a el COMO CLIENTE. Es decir: el anfitrion tiene isClient() == true.
+-- Se deduce del propio Lua del juego (client/JoyPad/ISJoyPadListBox.lua):
+--     if not getRemotePlayModeActive() or not isClient() or isCoopHost() then
+-- ese "not isClient() or isCoopHost()" solo tiene sentido si un anfitrion
+-- puede ser cliente. Por eso un simple "if isClient() then return end" deja
+-- el spawn MUERTO en anfitrion: alli todos son clientes y nadie decide.
+--
+-- Este helper devuelve true en EXACTAMENTE una maquina por partida:
+--     single player      -> isClient()==false            -> true
+--     anfitrion          -> isClient()==true + isCoopHost() -> true
+--     amigo conectado    -> isClient()==true, sin coop    -> false
+--     proceso servidor   -> isServer()==true             -> true
+function PVCCore.IsSpawnAuthority()
+    local okS, srv = pcall(isServer)
+    if okS and srv then return true end
+
+    local okC, cli = pcall(isClient)
+    if okC and not cli then return true end   -- single player
+
+    -- cliente: solo manda si ademas es el anfitrion de la partida coop
+    local okH, host = pcall(isCoopHost)
+    return okH and host == true
+end
+
+-- ---------------------------------------------------------------------------
+-- AUTORIDAD DE MUNDO (para las mecanicas de IA)
+-- ---------------------------------------------------------------------------
+-- El tick de IA del mod base (client/BanditUpdate.lua) corre en TODOS los
+-- clientes a la vez, y NO hay ningun concepto de "este cliente es el dueno de
+-- este bandido" (verificado: no existe tal arbitraje en su codigo). Ademas las
+-- mutaciones del brain son LOCALES: solo se propagan los pocos campos que
+-- alguien manda a mano con Bandit.ForceSyncPart.
+--
+-- Consecuencia: cualquier mecanica nuestra que CREE algo (spawnear refuerzos,
+-- encender fuego, sembrar objetos en el inventario, robar una bateria) se
+-- ejecutaria una vez POR JUGADOR CONECTADO. Con 3 amigos: 3 escuadrones de
+-- refuerzo, 3 incendios y 3 baterias duplicadas.
+--
+-- Por eso todo lo que crea o destruye estado del mundo pasa por aqui: lo hace
+-- UNA sola maquina (el anfitrion / el servidor). Lo puramente visual
+-- (dialogos, gritos, cojera) NO se filtra: es local por naturaleza y cada
+-- jugador debe verlo en su pantalla.
+--
+-- Es un alias intencionado de IsSpawnAuthority: la maquina que manda es la
+-- misma; el nombre distinto hace explicito EL PORQUE en cada punto de uso.
+PVCCore.IsWorldAuthority = PVCCore.IsSpawnAuthority
+
+-- Azucar para el patron repetido "si no mando yo, no toco el mundo".
+function PVCCore.NotWorldAuthority()
+    if type(PVCCore.IsWorldAuthority) ~= "function" then return false end
+    return not PVCCore.IsWorldAuthority()
+end
+
 -- Posicion del jugador SIN llamar a Java (se refresca en cada tick del nucleo)
 function PVCCore.GetPlayerPos()
     return playerX, playerY

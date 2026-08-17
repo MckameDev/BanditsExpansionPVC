@@ -425,22 +425,8 @@ end
 -- inventario (FixIdentity/OnZombieUpdate se lo da en el primer tick) y el
 -- machete es solo respaldo por si lo enganchan cuerpo a cuerpo antes de la
 -- cuenta regresiva.
-local function BuildChispaData()
-    return {
-        general = {
-            modid = TeamPVC.MOD_ID, cid = TeamPVC.CLAN_ID,
-            name = "El Chispa",
-            female = false, skin = 3, hairType = 13, beardType = 7, hairColor = 9,
-            health = 7, strength = 6, endurance = 7, sight = 8,
-            exp1 = 0, exp2 = 0, exp3 = 0,
-        },
-        clothing = CopyTable(OUTFIT_CHISPA),
-        tint = {},
-        weapons = {melee = "Base.Machete"},
-        ammo    = {},
-        bag     = {name = "Base.Bag_DuffelBagTINT"},
-    }
-end
+-- El perfil en si vive en PVCShared.BuildChispaData (shared/), porque quien lo
+-- inyecta al spawnear es el servidor.
 
 TeamPVC.Injected = false
 
@@ -680,7 +666,12 @@ local function FixIdentity(zombie, brain)
     -- El Chispa necesita su molotov GARANTIZADO (no es cuestion de suerte
     -- como en el resto del mod: sin el, su cuenta regresiva no tiene con que
     -- terminar). Se lo damos aca, en el mismo tick unico de "recien spawneo".
-    if brain.bid == TeamPVC.CHISPA_BID then
+    -- MULTIJUGADOR: el nombre (brain.fullname, arriba) SI se corrige en cada
+    -- cliente a proposito -- es cosmetico y cada jugador debe verlo bien.
+    -- El molotov NO: es un objeto real y brain.pvcNameFixed es local de cada
+    -- cliente, asi que sin la guarda El Chispa acabaria con un molotov por
+    -- jugador conectado. Lo entrega solo la autoridad.
+    if brain.bid == TeamPVC.CHISPA_BID and not PVCCore.NotWorldAuthority() then
         local ok, item = pcall(BanditCompatibility.InstanceItem, "Base.Molotov")
         if ok and item then
             zombie:getInventory():AddItem(item)
@@ -845,27 +836,12 @@ local function ShowArrivalMarker(square)
     if not ok then LogError("ShowArrivalMarker", err) end
 end
 
--- Decide si El Chispa entra esta vez, e inyecta/retira su perfil de
--- BanditCustom.banditData EN EL MOMENTO -- nunca queda registrado de forma
--- permanente (ver la nota larga junto a TeamPVC.CHISPA_BID). Devuelve el
--- tamano de grupo correcto para que spawnGroup() del mod base tome EXACTAMENTE
--- los candidatos que hay: 6-de-6 o 7-de-7, nunca un "6 de 7" al azar.
-local function RollChispa(force)
-    local cfg = TeamPVC.Config.Chispa
-    local include = cfg.Enabled and (force or ZombRand(100) < cfg.SpawnChance)
+-- La tirada de El Chispa vivia aqui; ahora la hace PVCShared.RollChispa desde
+-- el servidor (server/TacticalSpawnServer.lua). Ver la nota de reparto
+-- cliente/servidor en 00_TacticalShared.lua.
 
-    if include then
-        BanditCustom.banditData[TeamPVC.CHISPA_BID] = BuildChispaData()
-        return TeamPVC.Config.GroupSize + 1, true
-    else
-        BanditCustom.banditData[TeamPVC.CHISPA_BID] = nil
-        return TeamPVC.Config.GroupSize, false
-    end
-end
-
--- Equivalente real de BanditSpawner.SpawnGroup(): un comando de cliente que
--- atiende BanditServer.Spawner.Clan (funciona igual en SP, donde el lua de
--- server/ corre en el mismo proceso).
+-- Pide el spawn a la AUTORIDAD. En single player el server/ corre en el mismo
+-- proceso, asi que el comando se atiende igual sin red.
 -- forceChispa: true fuerza el 20% de El Chispa a 100% (boton de debug).
 function TeamPVC.SpawnGroup(square, forceChispa)
     local player = getSpecificPlayer(0)
@@ -886,28 +862,24 @@ function TeamPVC.SpawnGroup(square, forceChispa)
         return false
     end
 
-    -- pcall exitoso: (true, size, chispaIncluded). Fallido: (false, mensaje).
-    local rollOk, size, chispaIncluded = pcall(RollChispa, forceChispa)
-    if not rollOk then
-        LogError("RollChispa", size)   -- aca 'size' es el mensaje de error, no un numero
-        size, chispaIncluded = TeamPVC.Config.GroupSize, false
-    end
-
-    sendClientCommand(player, 'Spawner', 'Clan', {
-        cid     = TeamPVC.CLAN_ID,
-        size    = size,
-        program = "Bandit",       -- IA de asalto
-        x       = square:getX(),
-        y       = square:getY(),
-        z       = square:getZ(),
+    -- MULTIJUGADOR: la tirada de El Chispa y el spawn los hace el SERVIDOR
+    -- (server/TacticalSpawnServer.lua). Si los hiciera el cliente, cada
+    -- jugador conectado inyectaria su propio perfil en BanditCustom.banditData
+    -- y sortearia su propio tamano de grupo, desincronizando el clan.
+    -- Aqui solo se pide; la autoridad decide.
+    sendClientCommand(player, 'BEPSpawn', 'TeamPVCHere', {
+        x = square:getX(),
+        y = square:getY(),
+        z = square:getZ(),
+        forceChispa = forceChispa and true or false,
     })
 
     local ok2, err = pcall(ShowArrivalMarker, square)
     if not ok2 then LogError("ShowArrivalMarker", err) end
 
-    print("[TeamPVC] Solicitado spawn de " .. size ..
-          " integrantes en " .. square:getX() .. "," .. square:getY() .. "," .. square:getZ() ..
-          " (El Chispa: " .. tostring(chispaIncluded) .. ")")
+    print("[TeamPVC] Spawn solicitado al servidor en " ..
+          square:getX() .. "," .. square:getY() .. "," .. square:getZ() ..
+          " (forzar El Chispa: " .. tostring(forceChispa and true or false) .. ")")
     return true
 end
 
@@ -923,39 +895,13 @@ end
 -- local a su archivo server/ y no es alcanzable desde aqui); si la casilla
 -- elegida no existe (chunk no cargado), caemos en la casilla del jugador, que
 -- por definicion siempre es valida.
-local function PickNaturalSquare(player)
-    local cfg = TeamPVC.Config
-    local dist = cfg.NaturalMinDist + ZombRand(cfg.NaturalMaxDist - cfg.NaturalMinDist)
-    local angle = ZombRandFloat(0, 2 * math.pi)
-    local x = math.floor(player:getX() + math.cos(angle) * dist)
-    local y = math.floor(player:getY() + math.sin(angle) * dist)
-    local z = player:getZ()
-
-    local square = getCell():getGridSquare(x, y, z)
-    if square then return square end
-    return player:getSquare()
-end
-
-local function CheckNaturalSpawn()
-    local cfg = TeamPVC.Config
-    if not cfg.NaturalEnabled then return end
-    if isClient() then return end   -- igual que el planificador nativo: solo decide el host/servidor
-    -- (SpawnGroup ya llama a EnsureInjected, asi que no hace falta comprobarlo aqui)
-
-    local player = getSpecificPlayer(0)
-    if not player or player:isDead() then return end
-
-    local day = getGameTime():getWorldAgeHours() / 24
-    if day < cfg.DayStart or day > cfg.DayEnd then return end
-
-    local multiplier = (SandboxVars.Bandits and SandboxVars.Bandits.General_SpawnMultiplier) or 1
-    local chance = cfg.SpawnChance * multiplier / 6
-    if ZombRandFloat(0, 100) >= chance then return end
-
-    local square = PickNaturalSquare(player)
-    print("[TeamPVC] Spawn natural disparado (dia " .. string.format("%.1f", day) .. ").")
-    TeamPVC.SpawnGroup(square)
-end
+-- El planificador natural (elegir cuando y donde aparece el escuadron) ya NO
+-- vive aqui: lo hace CheckTeamPVCSpawn en server/TacticalSpawnServer.lua.
+-- Motivo: media/lua/server/ se ejecuta en single player, en el servidor
+-- interno del modo Anfitrion y en un dedicado, pero nunca en un cliente
+-- conectado -- eso da "exactamente una autoridad" en los tres modos. La
+-- version anterior, con "if isClient() then return end", dejaba el spawn
+-- MUERTO en Anfitrion, porque alli el anfitrion tambien es cliente.
 
 local function OnSpawnHere(worldobjects, square)
     local ok, err = pcall(TeamPVC.SpawnGroup, square)
@@ -1110,10 +1056,8 @@ local function Bootstrap()
         end
     end
 
-    if TeamPVC.Config.NaturalEnabled then
-        Events.EveryTenMinutes.Remove(CheckNaturalSpawn)
-        Events.EveryTenMinutes.Add(CheckNaturalSpawn)
-    end
+    -- El spawn natural lo programa el servidor (CheckTeamPVCSpawn en
+    -- server/TacticalSpawnServer.lua); aqui no se registra nada.
 
     print("[TeamPVC] v" .. TeamPVC.VERSION .. " listo. Menu de debug disponible con -debug.")
 end

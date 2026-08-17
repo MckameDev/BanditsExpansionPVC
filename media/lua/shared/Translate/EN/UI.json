@@ -73,5 +73,7 @@
     "UI_BEP_TR_NoteBody": "TOLL NOTICE\n\nThose who don't pay, burn.\nSay hi to hell for me.\n\n- Evaristo Brea",
     "UI_BEP_TR_DebugMenu": "[DEBUG] Toll",
     "UI_BEP_TR_DebugForce": "Force nearby roadblock and teleport me",
-    "UI_BEP_TR_DebugTeleport": "Teleport me to nearest roadblock"
+    "UI_BEP_TR_DebugTeleport": "Teleport me to nearest roadblock",
+    "UI_BEP_TB_NoteTitle": "Arsenal coordinates",
+    "UI_BEP_TB_NoteBody": "The PVC arsenal is buried at [%1, %2].\n\nIf I don't come back, it's yours.\n\n- Captain Mauricio Murillo"
 }

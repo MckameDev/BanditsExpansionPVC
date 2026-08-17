@@ -407,6 +407,11 @@ local function RegisterActions()
         return false
     end
     ZombieActions.TQWLootBody.onComplete = function(zombie, task)
+        -- MULTIJUGADOR: mover objetos de un cadaver al bandido es una
+        -- transferencia real. La animacion la ve todo el mundo, pero el
+        -- traspaso lo hace solo la autoridad para no duplicar el botin.
+        if PVCCore.NotWorldAuthority() then return true end
+
         local square = getCell():getGridSquare(task.x, task.y, task.z)
         if not square then return true end
 
@@ -463,10 +468,12 @@ local function RegisterActions()
             inventory:setDrawDirty(true)
         end
 
-        -- prender fuego en el destino
+        -- prender fuego en el destino. MULTIJUGADOR: solo lo enciende la
+        -- autoridad; el fuego es un objeto de mundo y se replica solo. Si lo
+        -- hiciera cada cliente, se apilarian N incendios en la misma casilla.
         local cell = getCell()
         local square = cell:getGridSquare(task.x, task.y, task.z)
-        if square then
+        if square and not PVCCore.NotWorldAuthority() then
             -- Firma tomada del Lua vanilla (ClientCommands.lua / SCampfireSystem):
             --   IsoFireManager.StartFire(cell, square, spread, intensity, fuel)
             -- El pcall la aisla por si cambia en una build futura.
@@ -498,8 +505,11 @@ local function RegisterActions()
     ZombieActions.TQWRadioCall.onComplete = function(zombie, task)
         zombie:setPrimaryHandItem(nil)
 
+        -- MULTIJUGADOR: el spawn lo pide UNA sola maquina. Sin esta guarda,
+        -- cada cliente conectado mandaria su propio comando y llegarian 3 o 4
+        -- escuadrones de refuerzo en vez de uno. Ver PVCCore.IsWorldAuthority.
         local player = getSpecificPlayer(0)
-        if player and task.cid then
+        if player and task.cid and not PVCCore.NotWorldAuthority() then
             -- API real de spawn del mod base:
             --   modulo 'Spawner', comando 'Clan'  -> BanditServer.Spawner.Clan
             -- (El comando 'SpawnGroup' que aparece en shared/BanditBases/Scenes
@@ -531,6 +541,12 @@ local function SeedInventory(bandit, brain)
     if not cfg.Enabled then return end
     if brain.tqwSeeded then return end
     brain.tqwSeeded = true
+
+    -- MULTIJUGADOR: brain.tqwSeeded es LOCAL de cada cliente (las mutaciones
+    -- del brain no se sincronizan), asi que sin esta guarda cada jugador
+    -- conectado sembraria su propia tanda de objetos y el bandido acabaria
+    -- con 3 o 4 copias de todo. Siembra solo la autoridad.
+    if PVCCore.NotWorldAuthority() then return end
 
     local inventory = bandit:getInventory()
     local added = false

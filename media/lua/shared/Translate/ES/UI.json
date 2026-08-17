@@ -73,5 +73,7 @@
     "UI_BEP_TR_NoteBody": "AVISO DE PEAJE\n\nEl que no paga, arde.\nSaludos al infierno.\n\n- Evaristo Brea",
     "UI_BEP_TR_DebugMenu": "[DEBUG] Peaje",
     "UI_BEP_TR_DebugForce": "Forzar bloqueo cercano y teletransportarme",
-    "UI_BEP_TR_DebugTeleport": "Teletransportarme al bloqueo mas cercano"
+    "UI_BEP_TR_DebugTeleport": "Teletransportarme al bloqueo mas cercano",
+    "UI_BEP_TB_NoteTitle": "Coordenadas del arsenal",
+    "UI_BEP_TB_NoteBody": "El arsenal de PVC está enterrado en [%1, %2].\n\nSi no vuelvo, es tuyo.\n\n- Capitán Mauricio Murillo"
 }

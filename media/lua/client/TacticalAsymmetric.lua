@@ -77,10 +77,10 @@ TA2.VERSION = "1.0.0"
 
 local getTimestampMs = getTimestampMs
 local getCell         = getCell
-local ZombRand        = ZombRand
 local pcall            = pcall
 local math_sqrt        = math.sqrt
 local math_floor       = math.floor
+local math_abs         = math.abs
 local math_min         = math.min
 local table_remove     = table.remove
 local table_insert     = table.insert
@@ -142,12 +142,6 @@ local function Log(msg)
     if TA2.Config.Debug then print("[TacticalAsymmetric] " .. tostring(msg)) end
 end
 
-local function Choice(tab)
-    local n = #tab
-    if n == 0 then return nil end
-    return tab[ZombRand(n) + 1]
-end
-
 -- Texto sobre la cabeza, SIN ruido de mundo: los bandidos genericos ya
 -- hablan asi en TacticalDialogues.lua; mantenemos la misma "voz" para no
 -- pisar la identidad exclusiva del grito de Team PVC (que si hace ruido,
@@ -176,10 +170,31 @@ end
 
 -- #1 -- PERFIL TACTICO ASIMETRICO. Se asigna UNA sola vez por bandido
 -- generico, en su primer tick con vida.
+-- MULTIJUGADOR: la tactica se deriva de forma DETERMINISTA de brain.rnd, no
+-- con un sorteo local. Motivo: el tick de IA del mod base corre en TODOS los
+-- clientes a la vez y las mutaciones del brain NO se sincronizan entre ellos
+-- (solo se propagan los pocos campos que alguien manda a mano con
+-- Bandit.ForceSyncPart). Con ZombRand cada jugador habria sorteado una
+-- tactica distinta para el MISMO bandido: uno lo veria fingir rendirse y otro
+-- sabotear un coche.
+-- brain.rnd lo asigna el SERVIDOR al crear el bandido
+-- (server/BanditServerSpawner.lua ~375: brain.rnd = {ZombRand(2), ...}) y
+-- viaja dentro del brain que se reparte a todos, asi que todos calculan el
+-- mismo indice sin una sola llamada de red y sin ventana de carrera.
+-- Es el mismo truco que ya usa IsPyro en TacticalQuickWins.lua.
 local function AssignTactic(brain)
     if brain.tqwTactic then return end
-    brain.tqwTactic = Choice(TA2.Tactics)
-    Log("Tactica asignada: " .. tostring(brain.tqwTactic))
+
+    local seed = brain.rnd and brain.rnd[4]
+    if not seed then
+        -- respaldo: brain.id tambien es estable y comun a todos los clientes
+        seed = brain.id
+    end
+    if not seed then return end   -- sin semilla estable no asignamos nada
+
+    local idx = (math_floor(math_abs(seed)) % #TA2.Tactics) + 1
+    brain.tqwTactic = TA2.Tactics[idx]
+    Log("Tactica asignada (determinista): " .. tostring(brain.tqwTactic))
 end
 
 -- Algunas tacticas necesitan un item concreto para funcionar (cuchillo para
@@ -189,6 +204,10 @@ end
 local function SeedTacticItem(zombie, brain)
     if brain.tqwTacticSeeded then return end
     brain.tqwTacticSeeded = true
+
+    -- MULTIJUGADOR: el flag de arriba es local de cada cliente, asi que sin
+    -- esta guarda cada jugador le daria su propio cuchillo/bomba de humo.
+    if PVCCore.NotWorldAuthority() then return end
 
     local itemType
     if brain.tqwTactic == "FakeSurrender" then
@@ -219,6 +238,10 @@ end
 TA2.PendingBombs = {}
 
 local function TriggerEvaristoExplosion(x, y, z)
+    -- MULTIJUGADOR: una sola explosion. La detona la autoridad y se replica;
+    -- si la lanzara cada cliente serian N explosiones en la misma casilla.
+    if PVCCore.NotWorldAuthority() then return end
+
     local cell = getCell()
     if not cell then return end
     local square = cell:getGridSquare(math_floor(x), math_floor(y), math_floor(z))
@@ -445,7 +468,11 @@ local function RegisterActions()
     ZombieActions.TA2Sabotage.onComplete = function(zombie, task)
         local vehicle = task.vehicleRef
         local brain = BanditBrain.Get(zombie)
-        if vehicle and brain then
+        -- MULTIJUGADOR: quitar la bateria del vehiculo y metersela al bandido
+        -- es una transferencia de objeto real. Si lo hiciera cada cliente,
+        -- CADA UNO generaria su propia copia de la bateria: duplicacion de
+        -- items, el peor tipo de bug. Solo la autoridad toca el vehiculo.
+        if vehicle and brain and not PVCCore.NotWorldAuthority() then
             local inventory = zombie:getInventory()
             local stole = false
 
@@ -484,6 +511,12 @@ end
 -- #6 -- EMBOSCADA DE HUMO ("El Fantasma")
 local function TriggerSmoke(zombie, brain, state, now)
     if brain.tqwSmoked then return end
+
+    -- MULTIJUGADOR: consumir la bomba y crear la humareda son cambios de
+    -- mundo -> solo la autoridad. El flanqueo posterior si lo calcula cada
+    -- cliente (es movimiento, no creacion).
+    if PVCCore.NotWorldAuthority() then return end
+
     local inventory = zombie:getInventory()
     local item = inventory:getFirstTypeRecurse("Base.SmokeBomb")
     if not item then return end
