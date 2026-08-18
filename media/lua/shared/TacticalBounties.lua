@@ -33,6 +33,16 @@
       - SINCRONIZACION: el servidor llama ModData.transmit(), y el cliente
         recibe por Events.OnReceiveGlobalModData, exactamente como hace
         TransmitBanditModData() / loadBanditModData() en BanditGMD.lua.
+      - MATERIALIZACION (crear el arcon en el mundo): SOLO la autoridad. Este
+        archivo registra LoadGridsquare desde shared/, asi que en un dedicado el
+        evento se dispara en el servidor Y en cada cliente que cargue la
+        casilla; si el cliente tambien construyera, cada jugador se fabricaria
+        su propio arcon con su propia copia del botin. Ver OnLoadGridsquare.
+      - ELECCION DE UBICACION: determinista a partir del brain, no ZombRand.
+        Asi todos los clientes calculan la misma clave y las peticiones
+        repetidas son idempotentes. Ver TB.PickLocation.
+      - VALIDACION: 'RegisterStash' solo acepta coordenadas de TB.Locations y
+        una peticion por jugador cada 5 s. Ver TB.IsKnownLocation.
 
     ---------------------------------------------------------------------------
     LA TABLA HASH (optimizacion pedida en el brief)
@@ -59,12 +69,14 @@
 if TacticalBounties then return end -- guarda anti doble carga
 TacticalBounties = {}
 local TB = TacticalBounties
-TB.VERSION = "1.0.0"
+TB.VERSION = "1.1.0"
 
 local pcall     = pcall
 local pairs     = pairs
+local type      = type
 local tostring  = tostring
 local math_floor = math.floor
+local math_abs   = math.abs
 
 TB.MODDATA_KEY = "TeamPVC_Bounties"
 
@@ -107,6 +119,60 @@ end
 -- que escribe y el que lee no puedan generar formatos distintos.
 function TB.Key(x, y)
     return math_floor(x) .. "_" .. math_floor(y)
+end
+
+-- ---------------------------------------------------------------------------
+-- LISTA BLANCA DE COORDENADAS
+-- El alijo solo puede caer en una de las ubicaciones predefinidas
+-- (TB.Locations). Sin esta comprobacion, el comando 'RegisterStash' es un
+-- generador de fusiles de asalto: cualquier cliente modificado podria pedir un
+-- alijo en la casilla que quisiera, tantas veces como quisiera. La lista es de
+-- 4 entradas, asi que validar es un for de 4 iteraciones.
+-- ---------------------------------------------------------------------------
+function TB.IsKnownLocation(x, y)
+    if type(x) ~= "number" or type(y) ~= "number" then return false end
+    local fx, fy = math_floor(x), math_floor(y)
+    for i = 1, #TB.Locations do
+        local loc = TB.Locations[i]
+        if math_floor(loc.x) == fx and math_floor(loc.y) == fy then return true end
+    end
+    return false
+end
+
+function TB.IsKnownKey(key)
+    if type(key) ~= "string" then return false end
+    for i = 1, #TB.Locations do
+        local loc = TB.Locations[i]
+        if TB.Key(loc.x, loc.y) == key then return true end
+    end
+    return false
+end
+
+-- ---------------------------------------------------------------------------
+-- ELECCION DE UBICACION: DETERMINISTA, NO AL AZAR
+-- ---------------------------------------------------------------------------
+-- OnCaptainDeath corre en el cliente de CADA jugador que ve morir al Capitan.
+-- Con ZombRand, cada cliente sorteaba una ubicacion DISTINTA: la idempotencia
+-- del servidor no ayudaba (las claves eran diferentes) y podian registrarse
+-- varios alijos por una sola muerte. La solucion anterior era dejar que
+-- decidiera solo la autoridad... lo que en un servidor dedicado significa que
+-- no decide nadie (ningun cliente es autoridad y el servidor no ejecuta
+-- client/): el alijo no existia en dedicado.
+-- Se deriva del brain, que el SERVIDOR asigna al crear el bandido y viaja
+-- igual a todos los clientes: todos calculan la MISMA ubicacion sin red y sin
+-- ventana de carrera. Es el mismo truco que ya usa AssignTactic en
+-- TacticalAsymmetric.lua e IsPyro en TacticalQuickWins.lua.
+function TB.PickLocation(brain)
+    local n = #TB.Locations
+    if n == 0 then return nil end
+
+    local seed = brain and ((brain.rnd and brain.rnd[3]) or brain.id)
+    if type(seed) ~= "number" then
+        -- Sin semilla estable no se inventa una al azar: se usa la primera
+        -- ubicacion, que sigue siendo igual para todos los clientes.
+        return TB.Locations[1]
+    end
+    return TB.Locations[(math_floor(math_abs(seed)) % n) + 1]
 end
 
 -- ---------------------------------------------------------------------------
@@ -163,6 +229,15 @@ end
 function TB.RegisterStash(x, y, z)
     if not IsAuthority() then return nil end
 
+    -- Defensa en profundidad: esta es la UNICA via de escritura, asi que aqui
+    -- se vuelve a validar la lista blanca aunque el handler de red ya lo haya
+    -- hecho. Ver TB.IsKnownLocation.
+    if not TB.IsKnownLocation(x, y) then
+        LogError("RegisterStash", "coordenadas fuera de la lista blanca: " ..
+                 tostring(x) .. "," .. tostring(y))
+        return nil
+    end
+
     local key = TB.Key(x, y)
     local data = TB.GetData()
 
@@ -187,6 +262,13 @@ end
 -- el jugador recargue la partida o vuelva a pisar la casilla).
 function TB.MarkLooted(key)
     if not IsAuthority() then return end
+    -- Solo claves de la lista blanca: marcar como saqueado es destructivo (el
+    -- alijo no vuelve a materializarse nunca), asi que la clave tiene que ser
+    -- una de las nuestras y no cualquier string.
+    if not TB.IsKnownKey(key) then
+        LogError("MarkLooted", "clave desconocida: " .. tostring(key))
+        return
+    end
 
     local data = TB.GetData()
     local stash = data.Stashes[key]
@@ -301,24 +383,27 @@ local function OnLoadGridsquare(square)
     TB.ActiveStashes[key] = nil
     TB.ActiveCount = TB.ActiveCount - 1
 
+    -- CONSTRUIR ES COSA DE LA AUTORIDAD, SIEMPRE.
+    -- Este handler vive en shared/, asi que en un dedicado se dispara en el
+    -- servidor Y en cada cliente que cargue la casilla. Si el cliente tambien
+    -- construyera, cada jugador se fabricaria SU PROPIO arcon con SU PROPIA
+    -- copia del botin (fusiles de asalto multiplicados por jugador), y encima
+    -- llamaria a transmitCompleteItemToClients desde un cliente. La
+    -- comprobacion de SquareAlreadyHasStash no alcanza: hay una ventana real
+    -- entre que el servidor crea el objeto y que el cliente lo recibe.
+    -- El arcon del servidor llega a todos por la replicacion normal del mundo.
+    if not IsAuthority() then
+        Log("Alijo " .. key .. ": lo materializa el servidor, aqui solo se espera")
+        return
+    end
+
     local ok, built = pcall(MaterializeStash, square, key)
     if not ok then
         LogError("MaterializeStash", built)
         return
     end
 
-    if built then
-        if IsAuthority() then
-            TB.MarkLooted(key)
-        else
-            -- El cliente no escribe el ModData global: pide al servidor que
-            -- lo marque, igual que hace BanditPost.lua del mod base.
-            local player = getSpecificPlayer(0)
-            if player then
-                pcall(sendClientCommand, player, 'BEPBounties', 'MarkLooted', {key = key})
-            end
-        end
-    end
+    if built then TB.MarkLooted(key) end
 end
 
 -- ---------------------------------------------------------------------------
@@ -328,24 +413,25 @@ end
 -- Se registra en PVCCore (client) desde TacticalBountiesClient.lua; aqui vive
 -- la logica para que el servidor tambien pueda usarla si hiciera falta.
 function TB.OnCaptainDeath(zombie, brain, id)
-    if type(TeamPVC) ~= "table" or type(TeamPVC.CAPTAIN_BID) ~= "string" then return end
-    if brain.bid ~= TeamPVC.CAPTAIN_BID then return end
+    -- El bid del capitan vive en shared (PVCShared), no en el modulo de cliente:
+    -- asi esta funcion tambien es utilizable desde el servidor. Se mantiene
+    -- TeamPVC como respaldo por compatibilidad.
+    local captainBid = (type(PVCShared) == "table" and PVCShared.CAPTAIN_BID) or
+                       (type(TeamPVC) == "table" and TeamPVC.CAPTAIN_BID)
+    if type(captainBid) ~= "string" then return end
+    if brain.bid ~= captainBid then return end
 
-    -- MULTIJUGADOR: este handler corre en el cliente de CADA jugador que vea
-    -- morir al Capitan, y la coordenada se elige AL AZAR mas abajo. Sin esta
-    -- guarda, cada cliente sortearia un alijo DISTINTO y se registrarian
-    -- varios por una sola muerte (la idempotencia de RegisterStash no ayuda:
-    -- las claves serian diferentes). Decide una sola maquina.
-    if type(PVCCore) == "table" and type(PVCCore.IsSpawnAuthority) == "function" then
-        if not PVCCore.IsSpawnAuthority() then return end
-    end
-
-    local loc = TB.Locations[ZombRand(#TB.Locations) + 1]
+    -- Ubicacion DETERMINISTA a partir del brain: todos los clientes que ven la
+    -- muerte calculan la misma clave, asi que se pueden mandar todas las
+    -- peticiones que hagan falta -- el servidor registra una sola vez
+    -- (RegisterStash es idempotente por clave). Ver TB.PickLocation.
+    local loc = TB.PickLocation(brain)
     if not loc then return end
 
     local key = TB.Key(loc.x, loc.y)
 
-    -- El cliente pide; la autoridad registra.
+    -- El cliente pide; la autoridad registra. Ya no hay guarda de "solo la
+    -- autoridad local decide": eso dejaba la mecanica muerta en dedicado.
     if IsAuthority() then
         TB.RegisterStash(loc.x, loc.y, loc.z)
     else
@@ -354,30 +440,53 @@ function TB.OnCaptainDeath(zombie, brain, id)
             pcall(sendClientCommand, player, 'BEPBounties', 'RegisterStash',
                   {x = loc.x, y = loc.y, z = loc.z})
         end
-        -- optimista en local para que el alijo funcione ya en esta sesion
-        TB.ActiveStashes[key] = true
-        TB.ActiveCount = TB.ActiveCount + 1
+        -- Ya no se marca el alijo "optimista" en el cache local: desde que solo
+        -- la autoridad materializa el arcon, al cliente no le sirve de nada
+        -- tenerlo apuntado. El estado real llega solo, por el ModData.transmit()
+        -- que hace RegisterStash en el servidor -> OnReceiveGlobalModData ->
+        -- RebuildCache.
     end
 
-    -- El cuaderno con las coordenadas, al cadaver del Capitan.
-    local ok, err = pcall(function()
-        local note = BanditCompatibility.InstanceItem("Base.Notebook")
-        if not note then return end
-        pcall(note.addPage, note, 1,
-              getText("UI_BEP_TB_NoteBody", math_floor(loc.x), math_floor(loc.y)))
-        pcall(note.setName, note, getText("UI_BEP_TB_NoteTitle"))
-        pcall(note.setCustomName, note, true)
+    -- ---------------------------------------------------------------------
+    -- LA PISTA: cuaderno en el cadaver, o aviso por pantalla
+    -- ---------------------------------------------------------------------
+    -- Meter el cuaderno en el inventario del bandido es una mutacion de objeto:
+    -- si lo hiciera cada cliente, el cadaver podria acabar con una nota por
+    -- jugador. Por eso lo sigue haciendo solo la autoridad local.
+    -- En un dedicado NADIE es autoridad local, y sin pista el alijo es
+    -- inencontrable: alli el jugador recibe las MISMAS coordenadas como aviso
+    -- en pantalla (mismo texto traducido que la nota, UI_BEP_TB_NoteBody).
+    local hasLocalAuthority = not (type(PVCCore) == "table" and
+                                   type(PVCCore.NotWorldAuthority) == "function" and
+                                   PVCCore.NotWorldAuthority())
 
-        local inv = zombie:getInventory()
-        if inv then
-            inv:AddItem(note)
-            -- que el cuaderno acabe en el cadaver, no solo en el inventario vivo
-            if type(Bandit) == "table" and type(Bandit.UpdateItemsToSpawnAtDeath) == "function" then
-                pcall(Bandit.UpdateItemsToSpawnAtDeath, zombie, brain)
+    if hasLocalAuthority then
+        local ok, err = pcall(function()
+            local note = BanditCompatibility.InstanceItem("Base.Notebook")
+            if not note then return end
+            pcall(note.addPage, note, 1,
+                  getText("UI_BEP_TB_NoteBody", math_floor(loc.x), math_floor(loc.y)))
+            pcall(note.setName, note, getText("UI_BEP_TB_NoteTitle"))
+            pcall(note.setCustomName, note, true)
+
+            local inv = zombie:getInventory()
+            if inv then
+                inv:AddItem(note)
+                -- que el cuaderno acabe en el cadaver, no solo en el inventario vivo
+                if type(Bandit) == "table" and type(Bandit.UpdateItemsToSpawnAtDeath) == "function" then
+                    pcall(Bandit.UpdateItemsToSpawnAtDeath, zombie, brain)
+                end
             end
+        end)
+        if not ok then LogError("OnCaptainDeath/nota", err) end
+    else
+        local player = getSpecificPlayer(0)
+        if player then
+            pcall(player.addLineChatElement, player,
+                  getText("UI_BEP_TB_NoteBody", math_floor(loc.x), math_floor(loc.y)),
+                  1, 0.85, 0.2)
         end
-    end)
-    if not ok then LogError("OnCaptainDeath/nota", err) end
+    end
 
     Log("Capitan caido: alijo en " .. key)
 end
@@ -387,14 +496,46 @@ end
 -- Mismo patron que BanditServer.Commands + Events.OnClientCommand del mod base.
 -- ---------------------------------------------------------------------------
 if isServer() then
+    -- Antiflood por jugador: registrar un alijo es un evento unico (muerte del
+    -- Capitan), asi que una peticion por jugador cada 5 s es holgadisimo.
+    local lastRequestMs = {}
+    local REQUEST_COOLDOWN_MS = 5000
+
+    local function PassRateLimit(player)
+        local name = "?"
+        local okName, n = pcall(player.getUsername, player)
+        if okName and type(n) == "string" then name = n end
+
+        local now  = getTimestampMs()
+        local last = lastRequestMs[name]
+        if last and (now - last) < REQUEST_COOLDOWN_MS then return false end
+        lastRequestMs[name] = now
+        return true
+    end
+
     local function onClientCommand(module, command, player, args)
         if module ~= 'BEPBounties' then return end
+        if not player then return end
 
-        if command == 'RegisterStash' and args and args.x and args.y then
-            pcall(TB.RegisterStash, args.x, args.y, args.z or 0)
-        elseif command == 'MarkLooted' and args and args.key then
-            pcall(TB.MarkLooted, args.key)
+        -- 'MarkLooted' YA NO EXISTE como comando de cliente, a proposito.
+        -- Desde que solo la autoridad materializa el arcon (ver
+        -- OnLoadGridsquare), ningun cliente necesita marcar nada -- y dejarlo
+        -- abierto permitia que un cliente modificado marcase los cuatro alijos
+        -- como saqueados antes de que nadie llegase, borrando el contenido del
+        -- mod para toda la partida.
+        if command ~= 'RegisterStash' then return end
+        if not args then return end
+        if not PassRateLimit(player) then return end
+
+        -- Lista blanca: solo las ubicaciones predefinidas. Sin esto, el comando
+        -- es una fabrica de fusiles de asalto en la casilla que el cliente
+        -- quiera. Ver TB.IsKnownLocation.
+        if not TB.IsKnownLocation(args.x, args.y) then
+            print("[TacticalBounties] Peticion de alijo rechazada (coordenadas no validas).")
+            return
         end
+
+        pcall(TB.RegisterStash, args.x, args.y, args.z or 0)
     end
     Events.OnClientCommand.Add(onClientCommand)
 end

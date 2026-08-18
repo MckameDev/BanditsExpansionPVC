@@ -48,15 +48,30 @@
     MULTIJUGADOR
     ------------
     El mod base ejecuta su IA solo en cliente (isServer() -> return) y usa
-    getSpecificPlayer(0). Este sub-mod sigue la misma convencion: pensado para
-    Single Player / host. En MP dedicado no hace nada danino, simplemente no
-    corre en el servidor.
+    getSpecificPlayer(0). Este archivo sigue la misma convencion. El reparto de
+    autoridad, mecanica por mecanica:
+
+      - EFECTOS DE MUNDO (el fuego del molotov #8, los refuerzos #26): los
+        ejecuta SIEMPRE el servidor via PVCCore.RequestFx / RequestReinforce.
+        Funcionan en los tres modos y el servidor deduplica, asi que da igual
+        cuantos clientes simulen al mismo bandido.
+      - MUTACIONES POR BANDIDO (sembrar inventario #28, saquear un cadaver #6):
+        siguen detras de PVCCore.NotWorldAuthority(), o sea que en un servidor
+        DEDICADO no ocurren (ningun cliente es autoridad y el servidor no
+        ejecuta client/). Consecuencia concreta en dedicado: los bandidos no
+        nacen con farmacos/molotov/radio/notas, asi que #21 Meds, #8 Pyro y
+        #26 Radio no tienen con que dispararse.
+        Para moverlas al servidor hace falta una forma verificada de localizar
+        un bandido concreto por brain.id desde media/lua/server/, que la API
+        publica de Bandits2 no expone hoy.
+      - PURAMENTE LOCAL (dialogos, cojera, cambio de arma, negociacion): corre
+        en cada cliente, como debe ser.
 ============================================================================]]
 
 if TQW then return end -- guarda anti doble carga
 
 TQW = {}
-TQW.VERSION = "1.0.0"
+TQW.VERSION = "1.1.0"
 
 local getTimestampMs   = getTimestampMs
 local getSpecificPlayer= getSpecificPlayer
@@ -468,18 +483,16 @@ local function RegisterActions()
             inventory:setDrawDirty(true)
         end
 
-        -- prender fuego en el destino. MULTIJUGADOR: solo lo enciende la
-        -- autoridad; el fuego es un objeto de mundo y se replica solo. Si lo
-        -- hiciera cada cliente, se apilarian N incendios en la misma casilla.
-        local cell = getCell()
-        local square = cell:getGridSquare(task.x, task.y, task.z)
-        if square and not PVCCore.NotWorldAuthority() then
-            -- Firma tomada del Lua vanilla (ClientCommands.lua / SCampfireSystem):
-            --   IsoFireManager.StartFire(cell, square, spread, intensity, fuel)
-            -- El pcall la aisla por si cambia en una build futura.
-            local ok, err = pcall(IsoFireManager.StartFire, cell, square, true, 60, 300)
-            if not ok then LogError("StartFire", err) end
-        end
+        -- Prender fuego en el destino. MULTIJUGADOR: lo enciende SIEMPRE el
+        -- servidor (PVCCore.RequestFx -> TSS.ApplyFx), que deduplica por
+        -- posicion. Antes esto estaba detras de PVCCore.NotWorldAuthority(): en
+        -- un servidor DEDICADO ningun cliente es autoridad y el fuego no
+        -- ocurria para nadie; en ANFITRION podia ocurrir dos veces (el
+        -- anfitrion en local + el servidor interno). En single player
+        -- RequestFx llama directo al codigo de server/, que vive en el mismo
+        -- proceso: mismo comportamiento que antes, sin red.
+        local player = getSpecificPlayer(0)
+        PVCCore.RequestFx(player, "Fire", task.x, task.y, task.z)
 
         local best = Bandit.GetBestWeapon(zombie)
         if best then Bandit.SetHands(zombie, best) end
@@ -505,23 +518,15 @@ local function RegisterActions()
     ZombieActions.TQWRadioCall.onComplete = function(zombie, task)
         zombie:setPrimaryHandItem(nil)
 
-        -- MULTIJUGADOR: el spawn lo pide UNA sola maquina. Sin esta guarda,
-        -- cada cliente conectado mandaria su propio comando y llegarian 3 o 4
-        -- escuadrones de refuerzo en vez de uno. Ver PVCCore.IsWorldAuthority.
+        -- MULTIJUGADOR: el refuerzo llega UNA sola vez porque el SERVIDOR
+        -- deduplica por clan (TSS.ApplyReinforce, ventana de 60 s) y acota el
+        -- tamano del escuadron. Antes esto dependia de que el cliente fuese
+        -- autoridad, lo que dejaba la mecanica muerta en un dedicado.
+        -- El spawn real lo sigue haciendo el spawner del mod base
+        -- (BanditServer.Spawner.Clan), llamado desde server/.
         local player = getSpecificPlayer(0)
-        if player and task.cid and not PVCCore.NotWorldAuthority() then
-            -- API real de spawn del mod base:
-            --   modulo 'Spawner', comando 'Clan'  -> BanditServer.Spawner.Clan
-            -- (El comando 'SpawnGroup' que aparece en shared/BanditBases/Scenes
-            --  es codigo legacy: no existe handler para el en la v42.20.)
-            sendClientCommand(player, 'Spawner', 'Clan', {
-                cid     = task.cid,
-                size    = task.size,
-                program = "Bandit",
-                x       = task.sx,
-                y       = task.sy,
-                z       = task.sz,
-            })
+        if player and task.cid then
+            PVCCore.RequestReinforce(player, task.cid, task.size, task.sx, task.sy, task.sz)
         end
 
         local best = Bandit.GetBestWeapon(zombie)
@@ -829,6 +834,21 @@ end
 local function Feature_Negotiator(bandit, brain, state, now)
     local cfg = TQW.Config.Negotiator
     if not cfg.Enabled then return end
+
+    -- GUARDA ANTI-SESION. brain.tqwHostileUntil es un sello de getTimestampMs()
+    -- guardado dentro del brain, y el brain SI se persiste en el savegame. Si
+    -- al recargar la partida ese reloj arranca desde un valor menor, el sello
+    -- queda en un futuro imposible y el bandido se quedaria pacifico para
+    -- siempre (brain.hostile = false, sin nadie que lo restaure). Cuando el
+    -- plazo pendiente excede el maximo que esta mecanica puede fijar, se
+    -- considera basura de otra sesion y se vence ya: la rama de abajo restaura
+    -- la hostilidad original.
+    if brain.tqwHostileUntil then
+        local maxWindow = cfg.DemandWindowMs + cfg.ComplianceGraceMs
+        if (brain.tqwHostileUntil - now) > maxWindow then
+            brain.tqwHostileUntil = now
+        end
+    end
 
     -- Vencimiento del plazo (se comprueba siempre, sin intervalo)
     if brain.tqwHostileUntil and now >= brain.tqwHostileUntil then
@@ -1316,6 +1336,13 @@ local function Bootstrap()
 
     Events.EveryHours.Remove(CleanupState)
     Events.EveryHours.Add(CleanupState)
+
+    -- Barrido compartido por id de bandido: borra el estado de los que ya no
+    -- estan vivos (los que se descargan con el chunk nunca disparan
+    -- OnZombieDead). Complementa a CleanupState, que caduca por tiempo.
+    if type(PVCCore.RegisterIdTable) == "function" then
+        PVCCore.RegisterIdTable("TQW.State", TQW.State)
+    end
 
     print("[TQW] Tactical Quick Wins v" .. TQW.VERSION .. " activo (8 mecanicas + botin de trasfondo).")
 end

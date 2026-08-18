@@ -42,7 +42,7 @@
 if TacticalAdvanced then return end -- guarda anti doble carga
 TacticalAdvanced = {}
 local TA = TacticalAdvanced
-TA.VERSION = "1.0.0"
+TA.VERSION = "1.1.0"
 
 local getTimestampMs = getTimestampMs
 local getSpecificPlayer = getSpecificPlayer
@@ -208,7 +208,18 @@ local function OnSquadmateDeath(deadZombie, deadBrain, deadId)
             end
         end
     end
-    if alive == 0 then return end   -- no queda nadie a quien avisar
+    if alive == 0 then
+        -- Cayo el ultimo del clan: se cierra la contabilidad de esta oleada.
+        -- Sin esto, TA.SquadPeak[cid] sigue creciendo con cada oleada nueva del
+        -- mismo cid (TrackSquadMember solo suma) y el porcentaje de bajas se
+        -- calcula contra un maximo historico inflado: a la tercera oleada, un
+        -- clan de 4 con una sola baja ya superaria el umbral del 60% y huiria
+        -- entero. El pico tiene que medirse por ENFRENTAMIENTO, no por partida.
+        TA.SquadPeak[cid]   = nil
+        TA.SquadLeader[cid] = nil
+        TA.SquadSeen[cid]   = nil
+        return   -- no queda nadie a quien avisar
+    end
 
     if isTeamPVC and isCaptain then
         local player = getSpecificPlayer(0)
@@ -390,14 +401,29 @@ local function OnZombieUpdate(zombie, brain, id, now, dist2, player)
     if not ok then LogError("Feature_Medic", err) end
 end
 
+-- Barrido de baja frecuencia (una vez por hora de juego): los bandidos que se
+-- descargan con el chunk nunca pasan por OnZombieDead, asi que su cid podia
+-- quedarse en las tres tablas de escuadra para siempre -- y con el, un pico de
+-- integrantes inflado que falsea el calculo de moral de la siguiente oleada.
+-- La fuente de verdad es la misma que usa el resto del submod: la cache publica
+-- de bandidos vivos del mod base.
 local function CleanupState()
-    -- barrido de baja frecuencia: bandidos que se descargaron sin pasar por
-    -- OnZombieDead (chunk descargado, etc.)
-    local now = getTimestampMs()
-    for cid, seen in pairs(TA.SquadSeen) do
-        local n = 0
-        for _ in pairs(seen) do n = n + 1 end
-        if n == 0 then TA.SquadSeen[cid] = nil end
+    if type(BanditZombie) ~= "table" or type(BanditZombie.GetAllB) ~= "function" then return end
+    local all = BanditZombie.GetAllB()
+    if not all then return end
+
+    -- Una tabla por barrido horario (no por tick): coste irrelevante.
+    local liveCids = {}
+    for _, light in pairs(all) do
+        if light.brain and light.brain.cid then liveCids[light.brain.cid] = true end
+    end
+
+    for cid in pairs(TA.SquadSeen) do
+        if not liveCids[cid] then
+            TA.SquadSeen[cid]   = nil
+            TA.SquadPeak[cid]   = nil
+            TA.SquadLeader[cid] = nil
+        end
     end
 end
 
@@ -438,6 +464,10 @@ local function Bootstrap()
 
     PVCCore.OnUpdate("TacticalAdvanced", OnZombieUpdate)
     PVCCore.OnDead("TacticalAdvanced", OnZombieDead)
+
+    if type(PVCCore.RegisterIdTable) == "function" then
+        PVCCore.RegisterIdTable("TA.State", TA.State)
+    end
 
     Events.EveryHours.Remove(CleanupState)
     Events.EveryHours.Add(CleanupState)

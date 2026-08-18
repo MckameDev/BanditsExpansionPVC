@@ -29,3 +29,19 @@
 	spawn: groupMin = 4
 	spawn: groupMax = 4
 	spawn: zone = 0
+
+[9f1c7a20-b9c0-4e11-9a3d-7ea55c0de003]
+	general: name = MaurinBombinMarket
+	spawn: friendly = true
+	spawn: companion = false
+	spawn: defenders = true
+	spawn: campers = false
+	spawn: assault = false
+	spawn: wanderer = false
+	spawn: roadblock = false
+	spawn: dayStart = 0
+	spawn: dayEnd = 10000
+	spawn: spawnChance = 0
+	spawn: groupMin = 3
+	spawn: groupMax = 3
+	spawn: zone = 0

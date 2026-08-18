@@ -73,7 +73,7 @@
 if TacticalAsymmetric then return end -- guarda anti doble carga
 TacticalAsymmetric = {}
 local TA2 = TacticalAsymmetric
-TA2.VERSION = "1.0.0"
+TA2.VERSION = "1.1.0"
 
 local getTimestampMs = getTimestampMs
 local getCell         = getCell
@@ -93,6 +93,10 @@ TA2.Config = {
 
     Evaristo = {
         ExplodeDelayMs = 2500,  -- 2 a 3 segundos, tal como pide el brief
+        -- INFORMATIVO: la potencia real la fija el SERVIDOR
+        -- (TSS.FxLimits.ExplodePower en server/TacticalSpawnServer.lua). Un
+        -- valor que viaja en un paquete de cliente nunca debe dimensionar un
+        -- efecto de mundo; este campo queda solo como documentacion del diseno.
         ExplodePower   = 100,   -- misma potencia que usa el juego base
         -- Clave de traduccion (ver Translate/EN|ES/BanditsExpansionPVC.json),
         -- resuelta con getText() en OnEvaristoDead.
@@ -238,17 +242,15 @@ end
 TA2.PendingBombs = {}
 
 local function TriggerEvaristoExplosion(x, y, z)
-    -- MULTIJUGADOR: una sola explosion. La detona la autoridad y se replica;
-    -- si la lanzara cada cliente serian N explosiones en la misma casilla.
-    if PVCCore.NotWorldAuthority() then return end
-
-    local cell = getCell()
-    if not cell then return end
-    local square = cell:getGridSquare(math_floor(x), math_floor(y), math_floor(z))
-    if not square then return end
-    local ok, err = pcall(IsoFireManager.explode, cell, square, TA2.Config.Evaristo.ExplodePower)
-    if not ok then LogError("IsoFireManager.explode", err) end
-    Log("La Ultima Risa: BOOM en " .. tostring(x) .. "," .. tostring(y))
+    -- MULTIJUGADOR: una sola explosion, la detona el SERVIDOR.
+    -- Antes esto salia por PVCCore.NotWorldAuthority(), lo que dejaba "La
+    -- Ultima Risa" sin detonar en un servidor dedicado (alli ningun cliente es
+    -- autoridad). Ahora se pide al servidor, que deduplica por posicion: aunque
+    -- los cuatro clientes que vieron morir a Evaristo pidan la explosion, se
+    -- ejecuta una sola. La potencia la fija el servidor (TSS.FxLimits).
+    local player = PVCCore.GetCachedPlayer and PVCCore.GetCachedPlayer() or getSpecificPlayer(0)
+    PVCCore.RequestFx(player, "Explode", x, y, z)
+    Log("La Ultima Risa: explosion pedida en " .. tostring(x) .. "," .. tostring(y))
 end
 
 local function OnTick()
@@ -527,11 +529,13 @@ local function TriggerSmoke(zombie, brain, state, now)
     inventory:Remove(item)
     inventory:setDrawDirty(true)
 
-    local cell = getCell()
+    -- La humareda la crea el SERVIDOR (una sola, deduplicada por posicion).
+    -- El consumo de la bomba sigue siendo local de la autoridad: es una
+    -- mutacion del inventario del bandido, no un efecto de mundo.
     local square = zombie:getSquare()
-    if cell and square then
-        local ok, err = pcall(IsoFireManager.StartSmoke, cell, square, true, 100, 300)
-        if not ok then LogError("StartSmoke", err) end
+    if square then
+        local player = PVCCore.GetCachedPlayer and PVCCore.GetCachedPlayer() or getSpecificPlayer(0)
+        PVCCore.RequestFx(player, "Smoke", square:getX(), square:getY(), square:getZ())
     end
     Log("Emboscada de humo: activada")
 end
@@ -619,6 +623,11 @@ local function OnZombieUpdate(zombie, brain, id, now, dist2, player)
 end
 
 local function OnZombieDead(zombie, brain, id)
+    -- El estado de runtime del bandido muerto no tiene por que sobrevivirle.
+    -- (El barrido horario de PVCCore recoge tambien los que se descargan con el
+    -- chunk y nunca llegan a este evento.)
+    if id then TA2.State[id] = nil end
+
     if type(TeamPVC) ~= "table" then return end
     if brain.bid ~= TeamPVC.EVARISTO_BID then return end
 
@@ -691,6 +700,10 @@ local function Bootstrap()
     PVCCore.OnUpdate("TacticalAsymmetric", OnZombieUpdate)
     PVCCore.OnHit("TacticalAsymmetric", OnHitZombie)
     PVCCore.OnDead("TacticalAsymmetric", OnZombieDead)
+
+    if type(PVCCore.RegisterIdTable) == "function" then
+        PVCCore.RegisterIdTable("TA2.State", TA2.State)
+    end
 
     Events.OnTick.Remove(OnTick)
     Events.OnTick.Add(OnTick)

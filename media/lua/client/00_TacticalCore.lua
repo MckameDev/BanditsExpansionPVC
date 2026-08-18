@@ -35,12 +35,16 @@
 if PVCCore then return end -- guarda anti doble carga
 
 PVCCore = {}
-PVCCore.VERSION = "1.0.0"
+PVCCore.VERSION = "1.1.0"
 
 local getTimestampMs   = getTimestampMs
 local getSpecificPlayer = getSpecificPlayer
 local isServer         = isServer
 local pcall            = pcall
+local type             = type
+local pairs            = pairs
+local sendClientCommand = sendClientCommand
+local math_floor       = math.floor
 
 PVCCore.Config = {
     -- Mas alla de esta distancia (en casillas) al jugador, ningun modulo se
@@ -49,6 +53,11 @@ PVCCore.Config = {
     MaxDistance   = 45,
     -- Cada cuanto refrescamos la referencia al jugador (no cambia casi nunca)
     PlayerCacheMs = 1000,
+    -- Cada cuanto se relee la POSICION del jugador. Antes se leia una vez por
+    -- zombi y por frame: con 150 bandidos a 60 FPS son 18.000 llamadas a Java
+    -- por segundo para un dato que solo se usa para descartar por distancia
+    -- (umbral: 45 casillas). A 30 ms el error maximo es de centimetros.
+    PlayerPosMs   = 30,
     Debug         = false,
 }
 PVCCore.Config.MaxDistanceSq = PVCCore.Config.MaxDistance * PVCCore.Config.MaxDistance
@@ -101,6 +110,7 @@ end
 
 local cachedPlayer, playerCacheUntil = nil, 0
 local playerX, playerY = 0, 0
+local playerPosUntil = 0
 
 local function GetPlayer(now)
     if cachedPlayer and now < playerCacheUntil then
@@ -111,8 +121,17 @@ local function GetPlayer(now)
     playerCacheUntil = now + PVCCore.Config.PlayerCacheMs
     if p then
         playerX, playerY = p:getX(), p:getY()
+        playerPosUntil = now + PVCCore.Config.PlayerPosMs
     end
     return p
+end
+
+-- Posicion del jugador con presupuesto propio: se relee como maximo cada
+-- PlayerPosMs, no una vez por zombi. Ver la nota en PVCCore.Config.
+local function RefreshPlayerPos(player, now)
+    if now < playerPosUntil then return end
+    playerPosUntil = now + PVCCore.Config.PlayerPosMs
+    playerX, playerY = player:getX(), player:getY()
 end
 
 -- ---------------------------------------------------------------------------
@@ -172,9 +191,95 @@ end
 PVCCore.IsWorldAuthority = PVCCore.IsSpawnAuthority
 
 -- Azucar para el patron repetido "si no mando yo, no toco el mundo".
+--
+-- LIMITE CONOCIDO (documentado a proposito): en un servidor DEDICADO ningun
+-- cliente es autoridad (isServer()==false, isClient()==true, isCoopHost()==
+-- false) y el servidor no ejecuta client/. O sea: todo lo que quede detras de
+-- esta guarda simplemente NO OCURRE en un dedicado.
+-- Por eso los EFECTOS DE MUNDO (fuego, explosion, humo, refuerzos) ya no usan
+-- esta guarda: pasan por PVCCore.RequestFx / RequestReinforce, que los ejecuta
+-- el servidor en los tres modos. Lo que sigue detras de la guarda son las
+-- mutaciones POR BANDIDO (sembrar inventario, curar, robar una bateria, mover
+-- el botin de un cadaver): el servidor no tiene una forma verificada de
+-- localizar un bandido concreto por brain.id, asi que en dedicado esas
+-- mecanicas quedan dormidas. Ver la nota de MULTIJUGADOR en TacticalQuickWins.
 function PVCCore.NotWorldAuthority()
     if type(PVCCore.IsWorldAuthority) ~= "function" then return false end
     return not PVCCore.IsWorldAuthority()
+end
+
+-- ---------------------------------------------------------------------------
+-- PUENTE HACIA LA AUTORIDAD (cliente -> servidor)
+-- ---------------------------------------------------------------------------
+-- Un unico camino para los tres modos de juego:
+--
+--   single player : media/lua/server/ se ejecuta en ESTE mismo proceso, asi que
+--                   TacticalSpawnServer es una tabla global visible desde aqui.
+--                   Se llama directo, sin red y sin suponer nada sobre el
+--                   loopback de sendClientCommand.
+--   anfitrion     : el servidor interno es otro proceso -> TacticalSpawnServer
+--   / dedicado      es nil aqui, se manda el comando y lo atiende el servidor.
+--
+-- Que sea SIEMPRE el servidor quien ejecuta arregla dos cosas a la vez: en
+-- dedicado el efecto vuelve a existir, y en anfitrion desaparece el riesgo de
+-- que el anfitrion lo haga en local mientras el servidor interno lo hace otra
+-- vez (dos incendios en la misma casilla). El servidor deduplica por posicion,
+-- asi que da igual cuantos clientes simulen al mismo bandido.
+--
+-- Tablas de payload preasignadas: estas peticiones son eventuales (una por
+-- molotov, una por muerte de Evaristo), pero reutilizarlas cuesta cero y
+-- mantiene la regla de "ninguna tabla nueva en el camino de la IA".
+local fxArgs        = {kind = "", x = 0, y = 0, z = 0}
+local reinforceArgs = {cid = "", size = 0, x = 0, y = 0, z = 0}
+
+local function LocalServer()
+    -- Solo en single player existe el global del servidor en este estado Lua.
+    local tss = TacticalSpawnServer
+    if type(tss) == "table" then return tss end
+    return nil
+end
+
+-- kind: "Fire" | "Explode" | "Smoke". La MAGNITUD la fija el servidor.
+function PVCCore.RequestFx(player, kind, x, y, z)
+    if type(x) ~= "number" or type(y) ~= "number" then return false end
+
+    local tss = LocalServer()
+    if tss and type(tss.ApplyFx) == "function" then
+        local ok, res = pcall(tss.ApplyFx, kind, x, y, z)
+        if not ok then print("[PVCCore][ERROR] ApplyFx local: " .. tostring(res)) end
+        return ok and res
+    end
+
+    if not player then return false end
+    fxArgs.kind = kind
+    fxArgs.x    = math_floor(x)
+    fxArgs.y    = math_floor(y)
+    fxArgs.z    = math_floor(z or 0)
+    local ok, err = pcall(sendClientCommand, player, 'BEPSpawn', 'Fx', fxArgs)
+    if not ok then print("[PVCCore][ERROR] RequestFx: " .. tostring(err)) end
+    return ok
+end
+
+function PVCCore.RequestReinforce(player, cid, size, x, y, z)
+    if type(cid) ~= "string" then return false end
+    if type(x) ~= "number" or type(y) ~= "number" then return false end
+
+    local tss = LocalServer()
+    if tss and type(tss.ApplyReinforce) == "function" then
+        local ok, res = pcall(tss.ApplyReinforce, player, cid, size, x, y, z)
+        if not ok then print("[PVCCore][ERROR] ApplyReinforce local: " .. tostring(res)) end
+        return ok and res
+    end
+
+    if not player then return false end
+    reinforceArgs.cid  = cid
+    reinforceArgs.size = size or 1
+    reinforceArgs.x    = math_floor(x)
+    reinforceArgs.y    = math_floor(y)
+    reinforceArgs.z    = math_floor(z or 0)
+    local ok, err = pcall(sendClientCommand, player, 'BEPSpawn', 'Reinforce', reinforceArgs)
+    if not ok then print("[PVCCore][ERROR] RequestReinforce: " .. tostring(err)) end
+    return ok
 end
 
 -- Posicion del jugador SIN llamar a Java (se refresca en cada tick del nucleo)
@@ -236,7 +341,7 @@ local function OnZombieUpdate(zombie)
 
     local player = GetPlayer(now)
     if not player then return end
-    playerX, playerY = player:getX(), player:getY()
+    RefreshPlayerPos(player, now)
 
     -- descarte por distancia: si esta lejisimos, nadie se entera
     local dx = zombie:getX() - playerX
@@ -300,15 +405,44 @@ local function OnZombieDead(zombie)
     lastBrainById[id] = nil
 end
 
--- Barrido de baja frecuencia: bandidos que jamas pasaron por nuestro
--- OnZombieDead (ej. chunk descargado para siempre) no deberian dejar su
--- respaldo en lastBrainById creciendo sin limite durante una partida larga.
+-- ---------------------------------------------------------------------------
+-- TABLAS POR BANDIDO (fuga de memoria en partidas largas)
+-- ---------------------------------------------------------------------------
+-- Cada modulo guarda estado indexado por brain.id (cooldowns, contadores,
+-- maquinas de estado). Se limpia en OnZombieDead... pero un bandido que se
+-- descarga con el chunk NUNCA dispara ese evento: su entrada se queda dentro
+-- para siempre. En una partida de cientos de horas eso son miles de entradas
+-- muertas repartidas entre seis tablas.
+-- Los modulos registran aqui sus tablas y el barrido horario (que ya existia
+-- para lastBrainById) borra de todas ellas los ids que ya no corresponden a
+-- ningun bandido vivo, usando la misma fuente de verdad que el resto del
+-- submod: la cache publica BanditZombie.GetAllB().
+local idTables, idTableCount = {}, 0
+
+function PVCCore.RegisterIdTable(name, t)
+    if type(t) ~= "table" then return false end
+    idTableCount = idTableCount + 1
+    idTables[idTableCount] = t
+    if PVCCore.Config.Debug then
+        print("[PVCCore] Tabla por id registrada para barrido: " .. tostring(name))
+    end
+    return true
+end
+
 local function CleanupBrainCache()
     if type(BanditZombie) ~= "table" or type(BanditZombie.GetAllB) ~= "function" then return end
     local alive = BanditZombie.GetAllB()
     if not alive then return end
+
     for id in pairs(lastBrainById) do
         if not alive[id] then lastBrainById[id] = nil end
+    end
+
+    for i = 1, idTableCount do
+        local t = idTables[i]
+        for id in pairs(t) do
+            if not alive[id] then t[id] = nil end
+        end
     end
 end
 

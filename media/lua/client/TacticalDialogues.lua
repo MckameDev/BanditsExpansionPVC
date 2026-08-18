@@ -30,7 +30,7 @@ if BanditTacticalDialogues then return end -- guarda anti doble carga
 BanditTacticalDialogues = {}
 local TD = BanditTacticalDialogues
 
-TD.VERSION = "1.1.0"
+TD.VERSION = "1.2.0"
 
 local getTimestampMs = getTimestampMs
 local ZombRand       = ZombRand
@@ -222,6 +222,16 @@ local function Bootstrap()
     PVCCore.OnUpdate("TacticalDialogues", OnZombieUpdate)
     PVCCore.OnHit("TacticalDialogues", OnHitZombie)
     PVCCore.OnDead("TacticalDialogues", OnZombieDead)
+
+    -- Las tres tablas de estado se limpian en OnZombieDead, pero un bandido que
+    -- se descarga con el chunk nunca dispara ese evento y su entrada quedaria
+    -- dentro para siempre. El barrido horario del nucleo borra los ids que ya no
+    -- corresponden a ningun bandido vivo.
+    if type(PVCCore.RegisterIdTable) == "function" then
+        PVCCore.RegisterIdTable("TD.Cooldowns", TD.Cooldowns)
+        PVCCore.RegisterIdTable("TD.Reloading", TD.Reloading)
+        PVCCore.RegisterIdTable("TD.NextTick",  TD.NextTick)
+    end
 
     print("[TacticalDialogues] v" .. TD.VERSION .. " activo (dano / bajas del clan / recarga).")
 end

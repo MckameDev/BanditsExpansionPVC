@@ -31,11 +31,21 @@
     ---------------------------------------------------------------------------
     COMANDOS QUE ATIENDE (cliente -> servidor)
     ---------------------------------------------------------------------------
+      BEPSpawn / Fx          : efecto de mundo puntual (Fire / Explode / Smoke)
+                               pedido por la IA de un cliente. El servidor fija
+                               la magnitud y deduplica por posicion.
+      BEPSpawn / Reinforce   : refuerzos por radio de un clan. El servidor acota
+                               el tamano y deduplica por clan.
       BEPSpawn / Ambush      : un cliente freno o choco contra un bloqueo y
                                pide la emboscada (la deteccion del frenazo es
                                inherentemente local: depende del vehiculo de
                                ESE jugador).
-      BEPSpawn / TeamPVCHere : spawn manual desde el menu de debug.
+      BEPSpawn / TeamPVCHere : spawn manual desde el menu de debug (admin en MP).
+      BEPSpawn / RoadblockHere: bloqueo forzado desde el menu de debug (idem).
+      BEPSpawn / SyncBlocks  : un cliente que entra pide los bloqueos vigentes.
+
+    TODOS pasan por la escalera de validacion (tipos -> antiflood -> proximidad
+    -> privilegio -> deduplicacion). Ver la seccion "VALIDACION DE PETICIONES".
 ============================================================================]]
 
 if isClient() then return end   -- un cliente conectado nunca ejecuta esto
@@ -43,11 +53,17 @@ if isClient() then return end   -- un cliente conectado nunca ejecuta esto
 if TacticalSpawnServer then return end -- guarda anti doble carga
 TacticalSpawnServer = {}
 local TSS = TacticalSpawnServer
-TSS.VERSION = "1.0.0"
+TSS.VERSION = "1.2.0"
 
-local ZombRand    = ZombRand
-local math_floor  = math.floor
-local pcall       = pcall
+local ZombRand       = ZombRand
+local math_floor     = math.floor
+local pcall          = pcall
+local type           = type
+local pairs          = pairs
+local tostring       = tostring
+local tonumber       = tonumber
+local getTimestampMs = getTimestampMs
+local getWorld       = getWorld
 
 local lastErrorMs = 0
 local function LogError(where, err)
@@ -137,31 +153,89 @@ function TSS.SpawnTeamPVC(player, square, forceChispa)
     return res
 end
 
+-- ---------------------------------------------------------------------------
+-- ESTADO PERSISTENTE DEL DEBUT
+-- Vive en ModData global, o sea que se guarda con la partida y sobrevive a
+-- recargas. Lo escribe SOLO este archivo, que ya es la unica autoridad de
+-- spawn en los tres modos, asi que no hay carrera posible.
+-- No se llama a ModData.transmit(): ningun cliente lee estas claves (el debut
+-- se decide y se ejecuta entero aqui), replicarlas seria trafico para nada.
+-- ---------------------------------------------------------------------------
+TSS.MODDATA_KEY = "BEP_TeamPVCSpawn"
+
+-- baselineDay: edad del mundo EN EL MOMENTO en que el mod se activo. Contar
+-- desde aqui (y no desde el dia 0 absoluto) es lo que hace que anadir el mod a
+-- una partida vieja no deje el debut ya caducado antes de empezar.
+function TSS.GetSpawnState()
+    local data = ModData.getOrCreate(TSS.MODDATA_KEY)
+    if data.baselineDay == nil then
+        local cfg = PVCShared.Spawn
+        local span = cfg.DebutMaxDay - cfg.DebutMinDay
+        data.baselineDay = PVCShared.GetWorldAgeDays()
+        data.debutDay    = cfg.DebutMinDay + ((span > 0) and ZombRandFloat(0, span) or 0)
+        data.debuted     = false
+        print(string.format(
+            "[TacticalSpawnServer] Debut del Team PVC programado para el dia %.1f del mundo " ..
+            "(mod activado en el dia %.1f, ventana +%s a +%s).",
+            data.baselineDay + data.debutDay, data.baselineDay,
+            tostring(cfg.DebutMinDay), tostring(cfg.DebutMaxDay)))
+    end
+    return data
+end
+
 local function CheckTeamPVCSpawn()
     local cfg = PVCShared.Spawn
 
     local player = PVCShared.PickPlayer()
     if not player or player:isDead() then return end
 
-    -- En MP el "dia" es por jugador; en SP es la edad del mundo.
-    local world = getWorld()
-    local day
-    if world and world:getGameMode() == "Multiplayer" then
-        day = player:getHoursSurvived() / 24
-    else
-        day = getWorldAge()
+    -- La ventana se mide sobre la EDAD DEL MUNDO, no sobre las horas del
+    -- personaje. Es lo que pide "los 15 dias de vida de la partida o servidor":
+    -- un unico reloj para todos los conectados, y por tanto UN debut por mundo
+    -- en vez de uno por jugador.
+    -- Contrapartida asumida en dedicado: quien entre pasada la ventana no vive
+    -- el debut, solo los spawns normales. La alternativa (reloj por jugador)
+    -- haria aparecer al escuadron una vez por cada recien llegado, que para un
+    -- clan unico y con nombre propio se siente peor.
+    local okState, state = pcall(TSS.GetSpawnState)
+    if not okState then
+        LogError("GetSpawnState", state)
+        return
     end
-    if day < cfg.DayStart or day > cfg.DayEnd then return end
 
-    local multiplier = (SandboxVars.Bandits and SandboxVars.Bandits.General_SpawnMultiplier) or 1
-    local chance = cfg.TeamPVCChance * multiplier / 6
-    if ZombRandFloat(0, 100) >= chance then return end
+    local elapsed = PVCShared.GetWorldAgeDays() - state.baselineDay
+
+    -- Se acabo el plazo: este spawn ya no se sortea, se fuerza.
+    local force = cfg.DebutEnabled and not state.debuted and elapsed >= state.debutDay
+
+    if not force then
+        if elapsed < cfg.DayStart or elapsed > cfg.DayEnd then return end
+
+        local multiplier = (SandboxVars.Bandits and SandboxVars.Bandits.General_SpawnMultiplier) or 1
+        local chance = cfg.TeamPVCChance * multiplier / 6
+        if ZombRandFloat(0, 100) >= chance then return end
+    end
 
     local square = PickNaturalSquare(player)
     if not square then return end
 
-    local ok, err = pcall(TSS.SpawnTeamPVC, player, square, false)
-    if not ok then LogError("SpawnTeamPVC", err) end
+    local ok, res = pcall(TSS.SpawnTeamPVC, player, square, false)
+    if not ok then
+        LogError("SpawnTeamPVC", res)
+        return
+    end
+
+    -- El debut se marca SOLO si el spawn de verdad salio. Si fallo (mod base no
+    -- disponible, casilla invalida, chunk sin cargar...) sigue pendiente y se
+    -- reintenta en la siguiente pasada -- que es justo lo que "garantizado"
+    -- tiene que significar. Un spawn natural temprano tambien cuenta como
+    -- debut: ya lo viste, no hace falta forzar otro.
+    if res and not state.debuted then
+        state.debuted = true
+        print(string.format(
+            "[TacticalSpawnServer] Debut del Team PVC completado en el dia +%.1f desde la activacion del mod.",
+            elapsed))
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -388,24 +462,253 @@ function TSS.TriggerAmbush(player, bx, by)
 end
 
 -- ---------------------------------------------------------------------------
+-- EFECTOS DE MUNDO (fuego, explosion, humo)  --  AUTORIDAD UNICA
+-- ---------------------------------------------------------------------------
+-- POR QUE ESTAN AQUI Y NO EN client/
+-- El tick de IA corre en TODOS los clientes que simulan al mismo bandido, asi
+-- que "que lo haga solo la autoridad local" (PVCCore.IsWorldAuthority) tiene
+-- dos problemas: en un DEDICADO ningun cliente es autoridad -> el efecto no
+-- ocurre para nadie; y en ANFITRION el anfitrion lo hacia en local mientras el
+-- servidor interno tambien podia hacerlo -> dos incendios.
+-- Con este handler hay exactamente UN camino en los tres modos: el cliente
+-- pide, el servidor ejecuta y deduplica. En single player el server/ vive en
+-- este mismo proceso, asi que PVCCore.RequestFx llama directo a TSS.ApplyFx
+-- sin pasar por la red (ver 00_TacticalCore.lua).
+--
+-- La MAGNITUD del efecto la fija el servidor, nunca el paquete: un cliente
+-- modificado no puede pedir una explosion de potencia 10000.
+-- ---------------------------------------------------------------------------
+TSS.FxLimits = {
+    FireIntensity = 60,
+    FireFuel      = 300,
+    ExplodePower  = 100,
+    SmokeIntensity= 100,
+    SmokeFuel     = 300,
+    MaxRange      = 60,    -- casillas: radio maximo que un cliente puede pedir tocar
+    DedupeMs      = 2500,  -- misma posicion + mismo efecto dentro de esta ventana = una vez
+    CooldownMs    = 500,   -- antiflood por jugador y comando
+    ClanDedupeMs  = 60000, -- refuerzos: una llamada por clan en esta ventana
+    MaxSquadSize  = 4,
+}
+
+local FX = {
+    Fire = function(cell, square)
+        return IsoFireManager.StartFire(cell, square, true,
+                                        TSS.FxLimits.FireIntensity, TSS.FxLimits.FireFuel)
+    end,
+    Explode = function(cell, square)
+        -- OJO: el metodo real es en MINUSCULA (IsoFireManager.explode).
+        return IsoFireManager.explode(cell, square, TSS.FxLimits.ExplodePower)
+    end,
+    Smoke = function(cell, square)
+        return IsoFireManager.StartSmoke(cell, square, true,
+                                         TSS.FxLimits.SmokeIntensity, TSS.FxLimits.SmokeFuel)
+    end,
+}
+
+-- Los efectos con fuego respetan la opcion del servidor: si el admin puso
+-- NoFire=true en el .ini, no hay mod que valga. getServerOptions() solo existe
+-- en multijugador, de ahi el pcall.
+local FX_IS_FIRE = {Fire = true, Explode = true}
+
+local function ServerFireDisabled()
+    local ok, opts = pcall(getServerOptions)
+    if not ok or not opts then return false end
+    local okFire, noFire = pcall(opts.getBoolean, opts, "NoFire")
+    return okFire and noFire == true
+end
+
+-- Deduplicacion por clave + ventana. Tabla plana; se purga en el barrido lento.
+local fxRecent = {}
+
+local function FxDedupe(key, windowMs)
+    local now = getTimestampMs()
+    local last = fxRecent[key]
+    if last and (now - last) < windowMs then return false end
+    fxRecent[key] = now
+    return true
+end
+
+-- Punto de entrada autoritativo. Lo llaman el handler de red (MP) y
+-- directamente PVCCore.RequestFx en single player.
+function TSS.ApplyFx(kind, x, y, z)
+    local fn = FX[kind]
+    if not fn then
+        LogError("ApplyFx", "efecto desconocido: " .. tostring(kind))
+        return false
+    end
+    if type(x) ~= "number" or type(y) ~= "number" then return false end
+
+    if FX_IS_FIRE[kind] and ServerFireDisabled() then return false end
+
+    if not FxDedupe(kind .. "_" .. math_floor(x) .. "_" .. math_floor(y), TSS.FxLimits.DedupeMs) then
+        return false
+    end
+
+    local cell = getCell()
+    if not cell then return false end
+    local square = cell:getGridSquare(math_floor(x), math_floor(y), math_floor(z or 0))
+    if not square then return false end
+
+    local ok, err = pcall(fn, cell, square)
+    if not ok then LogError("ApplyFx/" .. tostring(kind), err) end
+    return ok
+end
+
+-- Refuerzos por radio (#26 de TacticalQuickWins). El cliente pide; el servidor
+-- decide, acota el tamano y deduplica por clan: cuatro clientes simulando al
+-- mismo bandido no traen cuatro escuadrones.
+function TSS.ApplyReinforce(player, cid, size, x, y, z)
+    if type(cid) ~= "string" then return false end
+    -- Team PVC no se convoca como refuerzo de nadie: es un clan unico con su
+    -- propio planificador (y seria el vector obvio de abuso).
+    if cid == PVCShared.CLAN_ID then return false end
+    if type(x) ~= "number" or type(y) ~= "number" then return false end
+
+    size = math_floor(tonumber(size) or 0)
+    if size < 1 then return false end
+    if size > TSS.FxLimits.MaxSquadSize then size = TSS.FxLimits.MaxSquadSize end
+
+    if not FxDedupe("clan_" .. cid, TSS.FxLimits.ClanDedupeMs) then return false end
+
+    local target = player or PVCShared.PickPlayer()
+    if not target then return false end
+
+    local res = SpawnClanAt(target, cid, size, math_floor(x), math_floor(y), math_floor(z or 0), "Bandit")
+    if res then
+        print("[TacticalSpawnServer] Refuerzos del clan " .. cid .. ": " .. size .. " integrantes")
+    end
+    return res
+end
+
+-- ---------------------------------------------------------------------------
+-- VALIDACION DE PETICIONES DE CLIENTE
+-- Todo paquete es hostil hasta probar lo contrario: un cliente modificado
+-- manda lo que quiere, cuando quiere. Orden de comprobacion:
+--   1. tipos      -> nada de strings donde se esperan coordenadas
+--   2. antiflood  -> por jugador y comando
+--   3. proximidad -> solo puede pedir cosas cerca de si mismo
+--   4. privilegio -> los comandos de debug, solo admin en multijugador
+-- Al rechazar se sale en silencio (salvo debug): un atacante no debe recibir
+-- feedback util.
+-- ---------------------------------------------------------------------------
+local netLimit = {}   -- [username][command] = timestamp del ultimo aceptado
+
+local function PlayerName(player)
+    if not player then return "?" end
+    local ok, name = pcall(player.getUsername, player)
+    if ok and type(name) == "string" then return name end
+    return "?"
+end
+
+local function PassRateLimit(player, command, cooldownMs)
+    local name = PlayerName(player)
+    local perPlayer = netLimit[name]
+    if not perPlayer then
+        perPlayer = {}
+        netLimit[name] = perPlayer
+    end
+    local now  = getTimestampMs()
+    local last = perPlayer[command]
+    if last and (now - last) < (cooldownMs or TSS.FxLimits.CooldownMs) then return false end
+    perPlayer[command] = now
+    return true
+end
+
+local function NearPlayer(player, x, y, maxRange)
+    if not player or type(x) ~= "number" or type(y) ~= "number" then return false end
+    local ok, px, py = pcall(function() return player:getX(), player:getY() end)
+    if not ok then return false end
+    local dx, dy = px - x, py - y
+    local r = maxRange or TSS.FxLimits.MaxRange
+    return (dx * dx + dy * dy) <= (r * r)
+end
+
+local function IsMultiplayer()
+    local world = getWorld()
+    return world ~= nil and world:getGameMode() == "Multiplayer"
+end
+
+-- Los comandos del menu -debug (spawn manual del escuadron, bloqueo forzado)
+-- crean contenido de la nada: en un servidor publico son un vector de griefing.
+-- En partida individual no hay nada que proteger.
+local function IsPrivileged(player)
+    if not IsMultiplayer() then return true end
+    if not PVCShared.Spawn.DebugSpawnRequiresAdmin then return true end
+    if not player then return false end
+    local ok, level = pcall(player.getAccessLevel, player)
+    if not ok or type(level) ~= "string" then return false end
+    level = level:lower()
+    return level == "admin" or level == "moderator" or level == "gm" or level == "overseer"
+end
+
+-- Purga de las tablas de control: crecen con una entrada por jugador/posicion y
+-- no deben acumularse durante toda la vida del servidor.
+local function PurgeNetTables()
+    local now = getTimestampMs()
+    for key, ms in pairs(fxRecent) do
+        if (now - ms) > TSS.FxLimits.ClanDedupeMs then fxRecent[key] = nil end
+    end
+    for name, cmds in pairs(netLimit) do
+        local empty = true
+        for cmd, ms in pairs(cmds) do
+            if (now - ms) > 60000 then cmds[cmd] = nil else empty = false end
+        end
+        if empty then netLimit[name] = nil end
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- COMANDOS DE CLIENTE
 -- ---------------------------------------------------------------------------
 local function onClientCommand(module, command, player, args)
     if module ~= 'BEPSpawn' then return end
+    if not player then return end
 
-    if command == 'Ambush' and args and args.x and args.y then
+    if command == 'Fx' and args then
+        if not PassRateLimit(player, 'Fx') then return end
+        if not NearPlayer(player, args.x, args.y) then return end
+        pcall(TSS.ApplyFx, args.kind, args.x, args.y, args.z)
+
+    elseif command == 'Reinforce' and args then
+        if not PassRateLimit(player, 'Reinforce', 2000) then return end
+        -- el punto de llegada esta a ~25 casillas del bandido, que a su vez
+        -- puede estar a 45 del jugador: margen generoso pero acotado.
+        if not NearPlayer(player, args.x, args.y, 120) then return end
+        pcall(TSS.ApplyReinforce, player, args.cid, args.size, args.x, args.y, args.z)
+
+    elseif command == 'Ambush' then
+        if not args or type(args.x) ~= "number" or type(args.y) ~= "number" then return end
+        if not PassRateLimit(player, 'Ambush', 1000) then return end
+        if not NearPlayer(player, args.x, args.y, 100) then return end
         pcall(TSS.TriggerAmbush, player, args.x, args.y)
 
-    elseif command == 'TeamPVCHere' and args then
-        local cell = getCell()
-        local sq = cell and args.x and cell:getGridSquare(args.x, args.y, args.z or 0)
-        pcall(TSS.SpawnTeamPVC, player, sq or (player and player:getSquare()), args.forceChispa)
+    elseif command == 'TeamPVCHere' then
+        if not args then return end
+        if not PassRateLimit(player, 'TeamPVCHere', 5000) then return end
+        if not IsPrivileged(player) then
+            print("[TacticalSpawnServer] Spawn de debug rechazado para " ..
+                  PlayerName(player) .. " (requiere admin; ver PVCShared.Spawn.DebugSpawnRequiresAdmin).")
+            return
+        end
+        local sq
+        if type(args.x) == "number" and type(args.y) == "number" and
+           NearPlayer(player, args.x, args.y, 200) then
+            local cell = getCell()
+            sq = cell and cell:getGridSquare(math_floor(args.x), math_floor(args.y), math_floor(args.z or 0))
+        end
+        pcall(TSS.SpawnTeamPVC, player, sq or player:getSquare(), args.forceChispa == true)
 
-    elseif command == 'RoadblockHere' and args and args.x and args.y then
+    elseif command == 'RoadblockHere' then
+        if not args or type(args.x) ~= "number" or type(args.y) ~= "number" then return end
+        if not PassRateLimit(player, 'RoadblockHere', 5000) then return end
+        if not IsPrivileged(player) then return end
+        if not NearPlayer(player, args.x, args.y, 400) then return end
         local cell = getCell()
-        if cell then pcall(TSS.CreateRoadblock, cell, args.x, args.y) end
+        if cell then pcall(TSS.CreateRoadblock, cell, math_floor(args.x), math_floor(args.y)) end
 
     elseif command == 'SyncBlocks' then
+        if not PassRateLimit(player, 'SyncBlocks', 5000) then return end
         -- un cliente acaba de entrar: le mandamos los bloqueos vigentes
         for _, b in pairs(TSS.Blocks) do
             if not b.ambushed then
@@ -424,11 +727,24 @@ local function Bootstrap()
         return
     end
 
+    -- Se sella la linea base AHORA, no en la primera pasada del planificador:
+    -- asi el dia de debut queda anclado al momento real de activacion del mod
+    -- y se registra en el log de arranque. Va en su propio pcall porque un
+    -- fallo aqui no debe impedir que se registren los eventos (GetSpawnState
+    -- se vuelve a intentar sola en cada pasada).
+    local okState, errState = pcall(TSS.GetSpawnState)
+    if not okState then LogError("GetSpawnState (bootstrap)", errState) end
+
     Events.EveryTenMinutes.Remove(CheckTeamPVCSpawn)
     Events.EveryTenMinutes.Add(CheckTeamPVCSpawn)
 
     Events.EveryTenMinutes.Remove(CheckRoadblockSpawn)
     Events.EveryTenMinutes.Add(CheckRoadblockSpawn)
+
+    -- Purga de las tablas de antiflood/deduplicacion (frecuencia baja: son
+    -- tablas chicas, pero no deben crecer durante meses de uptime).
+    Events.EveryTenMinutes.Remove(PurgeNetTables)
+    Events.EveryTenMinutes.Add(PurgeNetTables)
 
     Events.OnClientCommand.Remove(onClientCommand)
     Events.OnClientCommand.Add(onClientCommand)

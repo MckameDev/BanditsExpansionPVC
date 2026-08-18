@@ -34,7 +34,7 @@
 if PVCShared then return end -- guarda anti doble carga
 
 PVCShared = {}
-PVCShared.VERSION = "1.0.0"
+PVCShared.VERSION = "1.2.0"
 
 PVCShared.MOD_ID = "BanditsExpansionPVC"
 
@@ -60,6 +60,29 @@ PVCShared.Spawn = {
     NaturalMinDist  = 20,
     NaturalMaxDist  = 40,
     ChispaChance    = 20,    -- % de que venga el 7mo integrante
+
+    -- DEBUT GARANTIZADO
+    -- El escuadron es unico y con nombre propio; dejarlo a un 1% por tirada
+    -- significa que una partida entera puede acabar sin verlo jamas. Con esto,
+    -- cuando el mod se inicializa en el mundo se sortea UN dia objetivo dentro
+    -- de la ventana, y llegado ese dia el spawn ya no se tira a suerte: se
+    -- fuerza.
+    -- La cuenta NO es sobre la edad absoluta del mundo, sino sobre la edad
+    -- MENOS la que tenia cuando el mod se activo (ver TSS.GetSpawnState en
+    -- server/TacticalSpawnServer.lua). Asi tambien funciona al anadir el mod a
+    -- una partida ya empezada: mundo en dia 200 -> debut entre el 200 y el 215.
+    DebutEnabled    = true,
+    DebutMinDay     = 3,     -- margen de gracia: no cae encima el primer dia
+    DebutMaxDay     = 15,    -- "dentro de los 15 dias": limite duro
+
+    -- SEGURIDAD DE LOS COMANDOS DE DEBUG
+    -- Los comandos 'TeamPVCHere' y 'RoadblockHere' crean contenido de la nada.
+    -- El menu que los dispara solo aparece con -debug, pero un cliente
+    -- modificado puede mandar el comando igual: en un servidor publico eso es
+    -- un vector de griefing (spawnear el escuadron de elite a voluntad).
+    -- Con esto en true, en MULTIJUGADOR solo los atienden cuentas con acceso
+    -- admin/moderador/gm/overseer. En partida individual nunca se aplica.
+    DebugSpawnRequiresAdmin = true,
 
     -- Bloqueos de carretera
     RoadblockEnabled  = true,
@@ -160,6 +183,56 @@ function PVCShared.GetGroundType(square)
         end
     end
     return groundType
+end
+
+-- ---------------------------------------------------------------------------
+-- EDAD DEL MUNDO
+-- "Dias transcurridos desde que empezo la partida". Es una propiedad del
+-- MUNDO, no del personaje, asi que vale igual en single player, en anfitrion y
+-- en dedicado: no hay que ramificar por modo de juego.
+--
+-- POR QUE ESTA FUNCION EXISTE
+-- La version anterior llamaba a getWorldAge(), que NO es una global de la API
+-- de build 42. Kahlua intentaba invocar nil y reventaba con
+-- "Object tried to call nil in CheckTeamPVCSpawn" en cada tick del
+-- planificador. Como no tenemos forma de verificar la firma exacta contra el
+-- JAR desde aqui, no apostamos a un unico accesor: probamos los conocidos en
+-- orden, nos quedamos con el primero que responda un numero y lo cacheamos
+-- para no pagar el pcall de resolucion cada vez. Si ninguno sirve devolvemos 0
+-- y lo decimos por consola, en vez de tumbar el evento del juego.
+--   1) getWorldAgeHours()  -> horas de mundo, admite fracciones de dia
+--   2) getNightsSurvived() -> granularidad de 1 dia, pero muy estable
+-- ---------------------------------------------------------------------------
+local WORLD_AGE_SOURCES = {
+    function(gt) return gt:getWorldAgeHours() / 24 end,
+    function(gt) return gt:getNightsSurvived() end,
+}
+
+local worldAgeGetter        -- nil = sin resolver, false = ninguno sirve
+
+function PVCShared.GetWorldAgeDays()
+    local ok, gt = pcall(getGameTime)
+    if not ok or not gt then return 0 end
+
+    if worldAgeGetter then
+        local ok2, days = pcall(worldAgeGetter, gt)
+        if ok2 and type(days) == "number" then return days end
+        worldAgeGetter = nil    -- dejo de responder: se vuelve a resolver
+    elseif worldAgeGetter == false then
+        return 0
+    end
+
+    for _, getter in ipairs(WORLD_AGE_SOURCES) do
+        local ok2, days = pcall(getter, gt)
+        if ok2 and type(days) == "number" then
+            worldAgeGetter = getter
+            return days
+        end
+    end
+
+    worldAgeGetter = false
+    print("[PVCShared][ERROR] Ningun accesor de edad del mundo disponible; se asume dia 0.")
+    return 0
 end
 
 -- ---------------------------------------------------------------------------

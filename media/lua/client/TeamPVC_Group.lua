@@ -1051,6 +1051,14 @@ local function Bootstrap()
             PVCCore.OnUpdate("TeamPVC", OnZombieUpdate)
             PVCCore.OnHit("TeamPVC", OnHitZombie)
             PVCCore.OnDead("TeamPVC", OnZombieDead)
+
+            -- Barrido horario del nucleo: los bandidos descargados con el chunk
+            -- nunca pasan por OnZombieDead y dejarian su entrada aqui de por vida.
+            if type(PVCCore.RegisterIdTable) == "function" then
+                PVCCore.RegisterIdTable("TeamPVC.ShoutCooldown", TeamPVC.ShoutCooldown)
+                PVCCore.RegisterIdTable("TeamPVC.ShoutNextTick", TeamPVC.ShoutNextTick)
+                PVCCore.RegisterIdTable("TeamPVC.ChispaState",   TeamPVC.ChispaState)
+            end
         else
             print("[TeamPVC] AVISO: falta PVCCore (00_TacticalCore.lua); gritos desactivados.")
         end
