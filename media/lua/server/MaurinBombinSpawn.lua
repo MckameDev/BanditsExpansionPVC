@@ -79,6 +79,18 @@ MBMSpawn.Config = {
     DynamicTries      = 12,   -- intentos de encontrar un sitio despejado
     ClearRadius       = 2,    -- radio que debe estar libre alrededor del puesto
 
+    -- RURAL + CARRETERA. Ver la nota larga en "FILTRO RURAL" mas abajo.
+    RuralCheckRadius   = 10,   -- radio (casillas) del muestreo de densidad
+    RuralMaxBuildings  = 25,   -- techo de casillas con edificio en ese radio
+    RoadCheckRadius    = 20,   -- alcance del rastreo de asfalto (cruz, no caja)
+
+    -- Anillo de busqueda de casilla libre. El modo fijo usa uno mas grande
+    -- porque el punto de partida ya esta pensado como "afueras"; el dinamico
+    -- necesita mas margen porque el ancla es un angulo al azar desde el
+    -- jugador y puede caer en cualquier tipo de terreno.
+    FixedRing        = 8,
+    DynamicRing      = 6,
+
     -- Reclamo
     ClaimRadius      = 14,    -- casillas alrededor del punto de spawn
     ClaimMaxTries    = 10,    -- reintentos (1 por minuto de mundo)
@@ -140,9 +152,85 @@ local function IsAreaClear(cell, cx, cy, cz, r)
     return true
 end
 
+-- ---------------------------------------------------------------------------
+-- FILTRO RURAL
+-- ---------------------------------------------------------------------------
+-- El puesto tiene que sentirse "afueras junto a la carretera", no "puesto de
+-- mercado en plena plaza del pueblo": en el centro de una ciudad, tres NPC
+-- fijos con dialogo y disparos ocasionales llaman muchisima atencion (y en la
+-- practica, a mas zombis del vecindario).
+--
+-- No hay ningun dato de "esto es zona urbana" expuesto a Lua (el juego no
+-- entrega poligonos de ciudad), asi que se aproxima con dos medidas baratas
+-- y ya usadas en otras partes de este submod:
+--
+--   1. DENSIDAD DE EDIFICIOS: si en un radio corto hay muchas casillas con
+--      square:getBuilding() ~= nil, es un bloque urbano solido (casas pegadas
+--      unas a otras). Las afueras tienen huecos: campo, parcelas sueltas,
+--      algun galpon aislado.
+--   2. CERCANIA A ASFALTO: sin esto, "rural" tambien aceptaria un descampado
+--      en medio de la nada sin ninguna carretera cerca, que no es lo que se
+--      pidio ("cerca de las carreteras principales"). Se reutiliza
+--      PVCShared.GetGroundType, el mismo detector que usa el peaje de
+--      Evaristo, en un rastreo en cruz (los ejes X e Y por separado) igual
+--      que TacticalSpawnServer.GetRoadOrientation: barato, O(radio) y no
+--      O(radio^2).
+--
+-- Las dos comprobaciones son mas caras que IsUsableSquare/IsAreaClear (que
+-- son ya establecidas), asi que se corren DESPUES de esas, solo sobre un
+-- candidato que ya paso los filtros baratos -- nunca sobre cada casilla del
+-- anillo. A la cadencia de este planificador (EveryTenMinutes) el coste es
+-- irrelevante de cualquier forma.
+-- ---------------------------------------------------------------------------
+
+local function CountBuildingsNear(cell, cx, cy, cz, r, cap)
+    local count = 0
+    for x = cx - r, cx + r do
+        for y = cy - r, cy + r do
+            local sq = cell:getGridSquare(x, y, cz)
+            if sq then
+                local okB, building = pcall(sq.getBuilding, sq)
+                if okB and building then
+                    count = count + 1
+                    if count > cap then return count end   -- salida temprana
+                end
+            end
+        end
+    end
+    return count
+end
+
+local function HasRoadNearby(cell, cx, cy, cz, r)
+    if type(PVCShared) ~= "table" or type(PVCShared.GetGroundType) ~= "function" then
+        return true   -- sin el detector no se puede exigir carretera: no bloquea
+    end
+    for x = cx - r, cx + r do
+        local sq = cell:getGridSquare(x, cy, cz)
+        if sq then
+            local ok, ground = pcall(PVCShared.GetGroundType, sq)
+            if ok and ground == "street" then return true end
+        end
+    end
+    for y = cy - r, cy + r do
+        local sq = cell:getGridSquare(cx, y, cz)
+        if sq then
+            local ok, ground = pcall(PVCShared.GetGroundType, sq)
+            if ok and ground == "street" then return true end
+        end
+    end
+    return false
+end
+
+local function IsRuralRoadside(cell, cx, cy, cz)
+    local cfg = MBMSpawn.Config
+    if not HasRoadNearby(cell, cx, cy, cz, cfg.RoadCheckRadius) then return false end
+    local buildings = CountBuildingsNear(cell, cx, cy, cz, cfg.RuralCheckRadius, cfg.RuralMaxBuildings)
+    return buildings <= cfg.RuralMaxBuildings
+end
+
 -- Busca la casilla utilizable mas cercana al punto pedido, en anillos
 -- crecientes. Devuelve nil si no hay nada aprovechable (chunk sin cargar,
--- edificio encima, etc.).
+-- edificio encima, demasiado urbano, sin carretera cerca, etc.).
 local function FindClearSquare(x, y, z, maxRing)
     local cell = getCell()
     if not cell then return nil end
@@ -154,8 +242,10 @@ local function FindClearSquare(x, y, z, maxRing)
                 -- solo el borde del anillo: el interior ya se probo
                 if ring == 0 or dx == -ring or dx == ring or dy == -ring or dy == ring then
                     local sx, sy = math_floor(x) + dx, math_floor(y) + dy
-                    local sq = cell:getGridSquare(sx, sy, math_floor(z or 0))
-                    if IsUsableSquare(sq) and IsAreaClear(cell, sx, sy, math_floor(z or 0), cfg.ClearRadius) then
+                    local sz = math_floor(z or 0)
+                    local sq = cell:getGridSquare(sx, sy, sz)
+                    if IsUsableSquare(sq) and IsAreaClear(cell, sx, sy, sz, cfg.ClearRadius)
+                       and IsRuralRoadside(cell, sx, sy, sz) then
                         return sq
                     end
                 end
@@ -173,7 +263,7 @@ local function FindDynamicSquare(player)
         local angle = ZombRandFloat(0, 2 * math_pi)
         local x = player:getX() + math_cos(angle) * dist
         local y = player:getY() + math_sin(angle) * dist
-        local sq = FindClearSquare(x, y, player:getZ(), 3)
+        local sq = FindClearSquare(x, y, player:getZ(), cfg.DynamicRing)
         if sq then return sq end
     end
     return nil
@@ -191,10 +281,15 @@ local function SpawnSquadAt(player, square)
         return false
     end
 
+    -- OJO CON EL PROGRAMA: "Bandit" (ZPBandit) es la IA de bandido completa y
+    -- su etapa Prepare llama Bandit.ForceStationary(bandit, false), asi que el
+    -- escuadron salia corriendo a buscar bases y perseguir gente. Usamos el
+    -- nuestro, que no devuelve tareas nunca y mantiene la inmovilidad.
+    -- Ver media/lua/shared/ZombiePrograms/ZPMaurinBombin.lua.
     local ok, err = pcall(BanditServer.Spawner.Clan, player, {
         cid     = MBM.CLAN_ID,
         size    = MBMSpawn.Config.SquadSize,
-        program = "Bandit",
+        program = "MaurinBombin",
         x       = square:getX(), y = square:getY(), z = square:getZ(),
     })
     if not ok then
@@ -230,6 +325,13 @@ local function TryClaim()
     local r2      = cfg.ClaimRadius * cfg.ClaimRadius
     local members = nil
     local merchantFound = false
+    -- Posicion REAL del mercader. El puesto se registra ahi y no en la casilla
+    -- de spawn: el escuadron se reparte por las casillas libres del entorno, asi
+    -- que el mercader puede acabar a varias casillas del punto pedido. Como la
+    -- comprobacion de proximidad de las compras se hace contra este punto,
+    -- usar la casilla de spawn hacia que el servidor rechazara con TOO_FAR
+    -- compras hechas literalmente delante del mercader.
+    local mx, my, mz = nil, nil, nil
 
     local n = list:size()
     if n > cfg.ScanCap then n = cfg.ScanCap end
@@ -269,6 +371,7 @@ local function TryClaim()
 
                         if role == MBM.ROLE_MERCHANT then
                             merchantFound = true
+                            mx, my, mz = z:getX(), z:getY(), z:getZ()
                             -- "Ignorado por los zombis": se aplica en el lado
                             -- que simula a los zombis, o sea aqui.
                             MBM.MakeIgnoredByZombies(z)
@@ -283,7 +386,7 @@ local function TryClaim()
     end
 
     if not merchantFound then return nil end
-    return members
+    return members, mx, my, mz
 end
 
 local function OnEveryOneMinute()
@@ -292,12 +395,18 @@ local function OnEveryOneMinute()
     local ok, err = pcall(function()
         claim.tries = claim.tries + 1
 
-        local members = TryClaim()
+        local members, mx, my, mz = TryClaim()
         if members then
             claim.pending = false
-            MaurinBombinServer.RegisterMarket(claim.x, claim.y, claim.z, members)
+            -- Se registra la casilla del MERCADER (la de spawn solo como
+            -- respaldo): es el punto contra el que se mide la proximidad de las
+            -- compras y el que canta la emisora.
+            local rx = mx or claim.x
+            local ry = my or claim.y
+            local rz = mz or claim.z
+            MaurinBombinServer.RegisterMarket(rx, ry, rz, members)
             print("[MaurinBombinSpawn] Escuadron reclamado en " .. claim.spot ..
-                  " (" .. claim.x .. "," .. claim.y .. ")")
+                  " (mercader en " .. math_floor(rx) .. "," .. math_floor(ry) .. ")")
             return
         end
 
@@ -359,7 +468,7 @@ local function CheckSpawn()
                 if player and not player:isDead() then
                     local dx, dy = player:getX() - spot.x, player:getY() - spot.y
                     if (dx * dx + dy * dy) <= (cfg.ActivationRange * cfg.ActivationRange) then
-                        local square = FindClearSquare(spot.x, spot.y, spot.z, 8)
+                        local square = FindClearSquare(spot.x, spot.y, spot.z, cfg.FixedRing)
                         if square then
                             MBMSpawn.SpawnMarket(player, square, spot.name)
                             return

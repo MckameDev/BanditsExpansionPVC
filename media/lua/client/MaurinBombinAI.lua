@@ -80,7 +80,6 @@ AI.Config = {
     ScanCap         = 400,    -- tope duro de zombis inspeccionados por barrido
 
     HomeTolerance   = 1.5,    -- casillas de deriva toleradas antes de volver
-    StaticCheckMs   = 250,    -- cadencia del control de inmovilidad
 
     AlertRange      = 20,     -- casillas: a quien alcanza la traicion del jugador
 
@@ -194,6 +193,15 @@ end
 local function InitNPC(zombie, brain, id, role)
     brain.mbmInit = true
 
+    -- INMOVILIDAD (la via buena, no el forcejeo).
+    -- El grueso del trabajo lo hace el programa propio del puesto
+    -- (shared/ZombiePrograms/ZPMaurinBombin.lua), que no devuelve tareas nunca.
+    -- Esto es el cinturon: si algo del mod base reescribiera el brain, el
+    -- escuadron sigue marcado como estacionario.
+    if type(Bandit.ForceStationary) == "function" then
+        pcall(Bandit.ForceStationary, zombie, true)
+    end
+
     -- 50.0 de HP. Se hace UNA sola vez a proposito: reaplicarlo por tick los
     -- volveria inmortales (curaria todo el dano recibido) y el permadeath de
     -- la Fase 1 dejaria de poder ocurrir.
@@ -214,9 +222,21 @@ local function InitNPC(zombie, brain, id, role)
         brain.hostileP = false
         MBM.MakeIgnoredByZombies(zombie)
     else
-        -- Los guardias SI son hostiles en general (tienen que poder tirotear
-        -- zombis), pero no al jugador: eso es hostileP.
-        brain.hostile  = true
+        -- BUG REAL corregido aqui (era la causa de "me atacan sin motivo"):
+        -- en BanditUpdate.lua el combate CONTRA EL JUGADOR se decide con
+        --     if brain.hostile or brain.hostileP then ...
+        -- -- un OR, no dos campos independientes. brain.hostile=true (que
+        -- pensamos necesario "para que puedan tirotear zombis") activaba TAMBIEN
+        -- el combate contra el jugador, sin que hiciera falta ningun disparo
+        -- previo. De ahi los ataques "de la nada".
+        --
+        -- Y no hacia falta: BanditUtils.AreEnemies() (BanditUtils.lua ~770)
+        -- devuelve true en cuanto uno de los dos brains es nil, que es
+        -- EXACTAMENTE el caso de un zombi normal (solo los bandidos tienen
+        -- brain). O sea que cualquier bandido -- hostile o no -- ya considera
+        -- enemigo a cualquier zombi corriente, sin condicion ninguna. Los
+        -- guardias defienden el puesto igual con hostile=false.
+        brain.hostile  = false
         brain.hostileP = false
     end
 
@@ -237,19 +257,29 @@ local function EnforcePact(brain, role)
         return
     end
 
-    if role == MBM.ROLE_MERCHANT then
-        brain.hostile  = false
-        brain.hostileP = false
-    else
-        brain.hostile  = true
-        brain.hostileP = false
-    end
+    -- Mientras el pacto siga en pie, TODOS -- mercader y guardias por igual --
+    -- van con hostile=false y hostileP=false. Ver la nota larga de InitNPC:
+    -- hostile=true tambien vuelve al bandido hostil hacia el jugador (es un
+    -- OR en el mod base), y no aporta nada contra zombis normales (ya son
+    -- enemigos por no tener brain). role queda como parametro para que
+    -- llamadas futuras puedan diferenciar sin tocar la firma otra vez.
+    brain.hostile  = false
+    brain.hostileP = false
 end
 
 -- ---------------------------------------------------------------------------
--- ZONA SEGURA: INMOVILIDAD
--- No existe un "ForceStationary" en la API del mod base, asi que la
--- inmovilidad se implementa sobre lo que SI existe y ya usa este submod:
+-- ZONA SEGURA: VUELTA AL PUESTO
+--
+-- CORRECCION: una version anterior de esta cabecera afirmaba que "no existe un
+-- ForceStationary en la API del mod base". Es FALSO: existe
+-- (Bandit.ForceStationary / Bandit.IsForceStationary, shared/Bandit.lua ~453) y
+-- ya se usa aqui, en InitNPC y en nuestro propio programa de IA. Aquello llevo
+-- a implementar la inmovilidad a base de limpiar tareas cada tick mientras
+-- ZPBandit las volvia a encolar -- el tironeo que se veia en pantalla.
+--
+-- Con el programa propio el escuadron ya no recibe tareas de movimiento, asi
+-- que lo que queda aqui es solo la red de seguridad para lo que el programa NO
+-- controla: empujones, retroceso por dano y arrastres del pathing.
 --   - si se alejaron del origen -> una unica tarea de movimiento de vuelta
 --     (solo si no tienen ya una en curso, para no reencolar por frame);
 --   - si estan en casa y aun asi les queda una tarea de movimiento (el
@@ -257,11 +287,13 @@ end
 -- ClearTasks solo se llama cuando hay movimiento pendiente y no hay una accion
 -- en curso: asi no se corta un disparo ni una recarga a medias.
 -- ---------------------------------------------------------------------------
-local function EnforceStatic(zombie, brain, now)
-    local next = brain.mbmNextStatic
-    if next and now < next then return end
-    brain.mbmNextStatic = now + AI.Config.StaticCheckMs
-
+-- SIN THROTTLE A PROPOSITO. Son cuatro restas y una consulta de tareas; el
+-- coste es despreciable frente a lo que arregla. Con el chequeo cada 250 ms
+-- quedaba una ventana en la que el escuadron ya habia salido corriendo: la
+-- retirada del combate del mod base limpia las tareas y encola un "Run" de
+-- hasta 13 casillas, asi que en un cuarto de segundo ya estaban lejos del
+-- puesto.
+local function EnforceStatic(zombie, brain)
     local hx, hy, hz = brain.mbmHomeX, brain.mbmHomeY, brain.mbmHomeZ
     if not hx then return end
 
@@ -269,19 +301,29 @@ local function EnforceStatic(zombie, brain, now)
     local d2 = dx * dx + dy * dy
 
     if d2 > AI.Config.HomeToleranceSq then
-        -- Empujado (o arrastrado por el pathing): vuelve caminando.
-        if Bandit.HasMoveTask(zombie) then return end
+        -- Fuera de su sitio (empujon, retroceso por dano, arrastre del pathing).
+        -- Se encola UNA vuelta y se marca, para no reencolarla en cada tick ni
+        -- borrarla nosotros mismos en la rama de abajo.
+        if brain.mbmReturning and Bandit.HasMoveTask(zombie) then return end
+
         local dist = BanditUtils.DistTo(zombie:getX(), zombie:getY(), hx, hy)
-        Bandit.ClearTasks(zombie)
+        Bandit.ClearMoveTasks(zombie)
         Bandit.AddTask(zombie, BanditUtils.GetMoveTask(0, math_floor(hx), math_floor(hy),
                                                        math_floor(hz or 0), "Walk", dist, false))
+        brain.mbmReturning = true
         return
     end
 
-    -- Ya esta en su sitio: cualquier orden de movimiento pendiente es una
-    -- persecucion que no queremos.
-    if Bandit.HasMoveTask(zombie) and not Bandit.HasActionTask(zombie) then
-        Bandit.ClearTasks(zombie)
+    -- Ya esta en casa: cualquier orden de movimiento es una persecucion o una
+    -- retirada que no queremos.
+    --
+    -- OJO, ClearMoveTasks y no ClearTasks: el primero borra SOLO las tareas
+    -- "Move"/"GoTo" y respeta las de combate, asi que los guardias siguen
+    -- disparando a los zombis mientras se les niega el desplazamiento. Con
+    -- ClearTasks se les cortaba el disparo o la recarga a medias.
+    brain.mbmReturning = false
+    if Bandit.HasMoveTask(zombie) then
+        Bandit.ClearMoveTasks(zombie)
     end
 end
 
@@ -440,7 +482,7 @@ local function OnUpdate(zombie, brain, id, now, dist2, player)
     if not brain.mbmInit then InitNPC(zombie, brain, id, role) end
 
     EnforcePact(brain, role)
-    EnforceStatic(zombie, brain, now)
+    EnforceStatic(zombie, brain)
     Chatter(zombie, brain, role, now, player)
 
     if role ~= MBM.ROLE_GUARD then return end
@@ -573,7 +615,7 @@ local function MissingDependencies()
         {"Bandit.AddTask",          Bandit.AddTask},
         {"Bandit.ClearTasks",       Bandit.ClearTasks},
         {"Bandit.HasMoveTask",      Bandit.HasMoveTask},
-        {"Bandit.HasActionTask",    Bandit.HasActionTask},
+        {"Bandit.ClearMoveTasks",   Bandit.ClearMoveTasks},
         {"BanditUtils.GetMoveTask", BanditUtils.GetMoveTask},
         {"BanditUtils.DistTo",      BanditUtils.DistTo},
         {"PVCCore.OnUpdate",        PVCCore.OnUpdate},
@@ -597,6 +639,21 @@ local function Register()
     PVCCore.OnUpdate("MaurinBombinAI", OnUpdate)
     PVCCore.OnHit("MaurinBombinAI",    OnHit)
     PVCCore.OnDead("MaurinBombinAI",   OnDead)
+
+    -- BLINDAJE DEL PUESTO.
+    -- El escuadron del mercado son bandidos para el motor, asi que TODAS las
+    -- mecanicas genericas del submod se les aplicaban: el Negociador les hacia
+    -- exigirte el equipo y atacarte al cumplir, se curaban en combate, saqueaban
+    -- cadaveres, fingian rendirse... Reservando el clan, PVCCore deja de
+    -- despachar a ningun otro modulo para estos NPC: aqui mandamos nosotros y
+    -- solo nosotros. Cubre update, hit y dead de una sola vez, y tambien las
+    -- mecanicas que se anadan mas adelante.
+    if type(PVCCore.ReserveClan) == "function" then
+        PVCCore.ReserveClan(MBM.CLAN_ID, "MaurinBombinAI")
+    else
+        print("[MaurinBombinAI] AVISO: PVCCore sin ReserveClan; el puesto podria " ..
+              "heredar comportamientos de bandido.")
+    end
 
     print("[MaurinBombinAI] v" .. AI.VERSION .. " registrado en PVCCore.")
 end

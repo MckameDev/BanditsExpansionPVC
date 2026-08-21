@@ -53,6 +53,10 @@ PVCShared.CHISPA_BID    = "9f1c7a20-b9c0-4e11-9a3d-7ea55c0de107"
 -- ---------------------------------------------------------------------------
 PVCShared.Spawn = {
     -- Team PVC
+    -- Interruptor maestro del escuadron. Lo puede apagar el jugador desde las
+    -- opciones de partida (BEP.TeamPVC; ver media/sandbox-options.txt y
+    -- shared/01_TacticalSandbox.lua). Apagado, no hay spawn natural NI debut.
+    TeamPVCEnabled  = true,
     TeamPVCChance   = 1,     -- "1%", misma escala que el clan mas raro del mod base
     TeamPVCSize     = 6,
     DayStart        = 0,

@@ -81,6 +81,10 @@ local math_abs   = math.abs
 TB.MODDATA_KEY = "TeamPVC_Bounties"
 
 TB.Config = {
+    -- Interruptor maestro de la red de alijos. Lo puede apagar el jugador desde
+    -- las opciones de partida (BEP.Bounties; ver media/sandbox-options.txt).
+    -- Apagado: el Capitan no deja cuaderno y no se materializa ningun arcon.
+    Enabled = true,
     Debug = false,
     -- Botin del alijo: fusil + municion de alto calibre, condicion al 100%.
     -- Todos verificados contra media/scripts (OJO: el antibiotico es
@@ -365,6 +369,8 @@ end
 -- Se dispara una vez por casilla al cargar terreno -> ruta rapida obligatoria.
 -- ---------------------------------------------------------------------------
 local function OnLoadGridsquare(square)
+    -- 0) interruptor de las opciones de partida (BEP.Bounties)
+    if TB.Config.Enabled == false then return end
     -- 1) sin alijos pendientes no se hace NADA (ni siquiera construir el string)
     if TB.ActiveCount == 0 then return end
     if not square then return end
@@ -413,6 +419,10 @@ end
 -- Se registra en PVCCore (client) desde TacticalBountiesClient.lua; aqui vive
 -- la logica para que el servidor tambien pueda usarla si hiciera falta.
 function TB.OnCaptainDeath(zombie, brain, id)
+    -- Interruptor de las opciones de partida (BEP.Bounties): sin alijos, el
+    -- Capitan muere sin dejar pista ninguna.
+    if TB.Config.Enabled == false then return end
+
     -- El bid del capitan vive en shared (PVCShared), no en el modulo de cliente:
     -- asi esta funcion tambien es utilizable desde el servidor. Se mantiene
     -- TeamPVC como respaldo por compatibilidad.

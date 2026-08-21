@@ -1,0 +1,127 @@
+VERSION = 1,
+
+/*
+    Bandits: Tactical Expansion - opciones de partida
+    -------------------------------------------------
+    Aparecen en la pantalla de Sandbox al crear partida (individual y
+    Anfitrion) y en la configuracion del servidor dedicado. Project Zomboid
+    replica SandboxVars del servidor a los clientes, asi que con una sola
+    definicion quedan cubiertos los tres modos.
+
+    Los valores se leen en media/lua/shared/01_TacticalSandbox.lua y se aplican
+    sobre las tablas Config de cada modulo al arrancar la partida.
+
+    El espacio de nombres es "BEP" (Bandits Expansion PVC), igual que el prefijo
+    UI_BEP_ de las traducciones.
+*/
+
+/***** 1. MODULOS GENERALES *****/
+
+option BEP.Dialogues = {
+    type = boolean, default = true,
+    page = BEP_General, translation = BEP.Dialogues,
+}
+
+option BEP.Morale = {
+    type = boolean, default = true,
+    page = BEP_General, translation = BEP.Morale,
+}
+
+option BEP.Medic = {
+    type = boolean, default = true,
+    page = BEP_General, translation = BEP.Medic,
+}
+
+/***** 2. COMPORTAMIENTOS DE BANDIDO *****/
+
+option BEP.Meds = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.Meds,
+}
+
+option BEP.Sidearm = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.Sidearm,
+}
+
+option BEP.Torch = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.Torch,
+}
+
+option BEP.Limp = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.Limp,
+}
+
+option BEP.Negotiator = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.Negotiator,
+}
+
+option BEP.Scavenger = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.Scavenger,
+}
+
+option BEP.Pyro = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.Pyro,
+}
+
+option BEP.Radio = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.Radio,
+}
+
+option BEP.Loot = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.Loot,
+}
+
+option BEP.FakeSurrender = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.FakeSurrender,
+}
+
+option BEP.HordeBait = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.HordeBait,
+}
+
+option BEP.CarSabotage = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.CarSabotage,
+}
+
+option BEP.SmokeAmbush = {
+    type = boolean, default = true,
+    page = BEP_Tactics, translation = BEP.SmokeAmbush,
+}
+
+/***** 3. CONTENIDO PROPIO *****/
+
+option BEP.TeamPVC = {
+    type = boolean, default = true,
+    page = BEP_Content, translation = BEP.TeamPVC,
+}
+
+option BEP.TeamPVCDebut = {
+    type = boolean, default = true,
+    page = BEP_Content, translation = BEP.TeamPVCDebut,
+}
+
+option BEP.Roadblock = {
+    type = boolean, default = true,
+    page = BEP_Content, translation = BEP.Roadblock,
+}
+
+option BEP.Bounties = {
+    type = boolean, default = true,
+    page = BEP_Content, translation = BEP.Bounties,
+}
+
+option BEP.Market = {
+    type = boolean, default = true,
+    page = BEP_Content, translation = BEP.Market,
+}

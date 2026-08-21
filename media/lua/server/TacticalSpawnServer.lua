@@ -186,6 +186,11 @@ end
 local function CheckTeamPVCSpawn()
     local cfg = PVCShared.Spawn
 
+    -- Interruptor de las opciones de partida (BEP.TeamPVC). Se comprueba aqui y
+    -- no en el arranque porque las opciones se aplican en OnGameStart, que puede
+    -- correr despues de que este planificador quede registrado.
+    if cfg.TeamPVCEnabled == false then return end
+
     local player = PVCShared.PickPlayer()
     if not player or player:isDead() then return end
 

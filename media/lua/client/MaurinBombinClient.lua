@@ -65,8 +65,12 @@ function MBMC.Notify(text, good)
     if good == true then r, g, b = 0.4, 1.0, 0.4
     elseif good == false then r, g, b = 1.0, 0.4, 0.4 end
 
+    -- addText exige un "arrowStr" antes del color (ver ISRadioInteractions.lua
+    -- ~332 del juego base: HaloTextHelper.addText(player, str, "[br/]", color)).
+    -- Sin ese argumento la llamada usa una firma que no existe y el pcall
+    -- fallaba en silencio, cayendo siempre al chat de linea.
     if type(HaloTextHelper) == "table" and type(HaloTextHelper.addText) == "function" then
-        if pcall(HaloTextHelper.addText, player, text, r, g, b) then return end
+        if pcall(HaloTextHelper.addText, player, text, "", r, g, b) then return end
     end
     pcall(player.addLineChatElement, player, text, r, g, b)
 end

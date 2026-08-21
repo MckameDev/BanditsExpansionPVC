@@ -581,6 +581,18 @@ function MBMServer.RegisterMarket(x, y, z, members)
     data.location      = {x = math_floor(x or 0), y = math_floor(y or 0), z = math_floor(z or 0)}
     data.merchantAlive = true
     data.squad         = {}
+
+    -- BUG REAL (rompia el trueque entero): si el mercader habia sido asesinado
+    -- alguna vez, permanentlyKilled quedaba en true y NADIE lo volvia a poner a
+    -- false salvo el temporizador de 15 dias de OnEveryHours. Un puesto nuevo se
+    -- registraba con merchantAlive = true, pero MBM.IsMarketOpen comprueba
+    -- permanentlyKilled ANTES que merchantAlive, o sea que devolvia false: el
+    -- mercader estaba plantado ahi, visible, y la opcion de comerciar del menu
+    -- contextual no aparecia jamas. Con el spawn de debug era permanente,
+    -- porque ese camino no pasa por IsMarketAllowed.
+    -- Si hay un puesto abierto, por definicion no hay permadeath vigente.
+    data.permanentlyKilled = false
+    data.respawnHour       = nil
     -- Sello para el modo dinamico del planificador (Fase 2): marca "hubo
     -- mercado en esta hora", que es desde donde se cuenta el tiempo sin el.
     data.lastMarketHour = MBM.NowHours()
@@ -605,6 +617,12 @@ end
 
 -- Lo consulta el planificador de spawn de la Fase 2 antes de intentar nada.
 function MBMServer.IsMarketAllowed()
+    -- Interruptor de las opciones de partida (BEP.Market). Va el primero: si el
+    -- mercado esta apagado no se monta ningun puesto, ni por ciclo ni por el
+    -- modo dinamico. El spawn manual de debug si lo sigue permitiendo, porque
+    -- ese camino no pasa por aqui a proposito (sirve para probar).
+    if CFG.Enabled == false then return false end
+
     local data = MBMServer.EnsureData()
     if data.permanentlyKilled then return false end
     if data.merchantAlive then return false end   -- ya hay uno vivo por ahi

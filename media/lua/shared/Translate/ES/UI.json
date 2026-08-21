@@ -101,6 +101,8 @@
     "UI_MBM_RadioOfferItem": "%1 por %2",
     "UI_MBM_RadioNoOffers": "Hoy los estantes están pelados, pero pásense igual.",
     "UI_MBM_RadioSignOff": "Traigan efectivo, que aquí no fiamos. *crrrsh*",
+    "UI_MBM_RadioOffAir": "Hoy no hay puesto, seguimos moviendo la mercaderia. No sueltes este dial.",
+    "UI_MBM_RadioOffAirDead": "El puesto esta cerrado. Nos mataron al hombre. Volveremos cuando se pueda.",
     "UI_MBM_TownMuldraugh": "Muldraugh",
     "UI_MBM_TownRosewood": "Rosewood",
     "UI_MBM_TownWestPoint": "West Point",

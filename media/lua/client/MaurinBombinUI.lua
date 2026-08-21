@@ -43,10 +43,20 @@ local type     = type
 local tostring = tostring
 
 UI.Config = {
-    Width          = 460,
+    Width          = 520,
     Height         = 380,
     RowHeight      = 42,
-    InteractRange  = 4,     -- casillas: distancia para que aparezca la opcion
+    -- La barra de scroll vertical de ISScrollingListBox mide 17px
+    -- (ISScrollBar.lua: self.width = 17) y se dibuja COMO OVERLAY sobre el
+    -- borde derecho de la fila, no descuenta ese espacio del ancho que
+    -- devuelve self:getWidth(). Sin este margen, el "x<cantidad>" quedaba
+    -- literalmente debajo de la barra.
+    ScrollbarMargin = 20,
+    InteractRange  = 4,     -- casillas: radio alrededor del JUGADOR
+    -- Radio alrededor de la CASILLA PINCHADA. Es mas chico porque ahi si se
+    -- esta senalando al mercader a proposito; sirve para que el clic derecho
+    -- encima suyo funcione aunque el jugador este algo mas lejos.
+    ClickRange     = 2,
     -- La ventana se cierra al MISMO radio con el que el servidor acepta compras
     -- (MBM.Config.PurchaseRange). Si fueran distintos, el jugador podria tener
     -- la ventana abierta a una distancia a la que el cerebro ya rechaza todo,
@@ -126,7 +136,8 @@ function MBMarketList:doDrawItem(y, item, alt)
 
     -- nombre + unidades disponibles
     self:drawText(entry.label, 40, y + 3, 1, 1, 1, 1, UIFont.Small)
-    self:drawTextRight("x" .. tostring(entry.qty), w - 8, y + 3, 0.75, 0.75, 0.75, 1, UIFont.Small)
+    self:drawTextRight("x" .. tostring(entry.qty), w - MaurinBombinUI.Config.ScrollbarMargin,
+                       y + 3, 0.75, 0.75, 0.75, 1, UIFont.Small)
 
     -- [icono Money] Money: <dinero jugador> / <coste>
     local money = self.playerMoney or 0
@@ -154,12 +165,15 @@ end
 MBMarketPanel = ISPanel:derive("MBMarketPanel")
 MBMarketPanel.instance = nil
 
-function MBMarketPanel:new(x, y, width, height, player)
+function MBMarketPanel:new(x, y, width, height, player, merchant)
     local o = ISPanel:new(x, y, width, height)
     setmetatable(o, self)
     self.__index = self
 
     o.player         = player
+    -- Referencia viva al mercader: es contra el que se mide la distancia de
+    -- cierre (ver prerender). Puede ser nil si quien abre no lo aporta.
+    o.merchant       = merchant
     o.backgroundColor= {r = 0, g = 0, b = 0, a = 0.85}
     o.borderColor    = {r = 0.55, g = 0.45, b = 0.15, a = 1}
     o.moveWithMouse  = true
@@ -302,9 +316,30 @@ function MBMarketPanel:prerender()
         return
     end
 
-    local loc = data.location
+    -- CIERRE POR DISTANCIA -- se mide contra EL MERCADER, no contra
+    -- data.location.
+    --
+    -- BUG QUE ESTO ARREGLA: data.location es la casilla donde se REGISTRO el
+    -- puesto al spawnear. Si el mercader se habia movido de ahi (que es
+    -- justo lo que pasaba con la IA de bandido), el jugador podia estar pegado
+    -- a el y aun asi a mas de 8 casillas del punto registrado -> la ventana se
+    -- abria y se cerraba en el mismo frame. Desde fuera se veia como "hago clic
+    -- en Comerciar y no pasa nada".
     local player = self.player
-    if loc and player then
+    if not player then return end
+
+    local merchant = self.merchant
+    if merchant and not merchant:isDead() then
+        local dx, dy = player:getX() - merchant:getX(), player:getY() - merchant:getY()
+        local r = MaurinBombinUI.Config.CloseRange
+        if (dx * dx + dy * dy) > (r * r) then self:close() end
+        return
+    end
+
+    -- Sin referencia al mercader (murio, o se abrio la ventana sin pasarlo):
+    -- se cae al punto registrado, que es lo unico que queda.
+    local loc = data.location
+    if loc then
         local dx, dy = player:getX() - (loc.x or 0), player:getY() - (loc.y or 0)
         local r = MaurinBombinUI.Config.CloseRange
         if (dx * dx + dy * dy) > (r * r) then self:close() end
@@ -319,7 +354,9 @@ end
 
 -- ---------------------------------------------------------------------------
 -- TEXTO DEL PIE / RADIO
--- Se expone porque la radio (MaurinBombinRadio.lua) dice exactamente lo mismo.
+-- La emisora (server/radio/MaurinBombinChannel.lua) dice exactamente lo mismo,
+-- pero calcula su propia copia: vive en server/ y un dedicado no ejecuta este
+-- archivo. Si se cambia el criterio aqui, hay que cambiarlo alli tambien.
 -- ---------------------------------------------------------------------------
 function UI.RestockText(data)
     if not data then return "" end
@@ -338,7 +375,7 @@ end
 -- ---------------------------------------------------------------------------
 -- APERTURA
 -- ---------------------------------------------------------------------------
-function UI.Open(player)
+function UI.Open(player, merchant)
     if MBMarketPanel.instance then
         MBMarketPanel.instance:close()
     end
@@ -347,7 +384,7 @@ function UI.Open(player)
     local x = (getCore():getScreenWidth() - w) / 2
     local y = (getCore():getScreenHeight() - h) / 2
 
-    local panel = MBMarketPanel:new(x, y, w, h, player)
+    local panel = MBMarketPanel:new(x, y, w, h, player, merchant)
     panel:initialise()
     panel:instantiate()
     panel:addToUIManager()
@@ -396,8 +433,11 @@ local function FindMerchantNear(x, y, z, range)
     return nil
 end
 
-local function OnTradeClick(worldobjects, player)
-    local ok, err = pcall(UI.Open, player)
+-- El mercader se resuelve al CONSTRUIR el menu y viaja como argumento, en vez
+-- de volver a buscarlo al hacer clic: asi la ventana mide la distancia contra
+-- el NPC concreto sobre el que se pincho.
+local function OnTradeClick(worldobjects, player, merchant)
+    local ok, err = pcall(UI.Open, player, merchant)
     if not ok then MBM.LogError("UI.Open", err) end
 end
 
@@ -424,6 +464,21 @@ local function OnDebugSpawnHere(worldobjects, square)
     if not ok then MBM.LogError("DebugSpawnHere", err) end
 end
 
+-- Casilla sobre la que se hizo clic (si el motor la aporta); si no, la del
+-- propio jugador.
+local function ClickedSquare(player, worldobjects)
+    if worldobjects then
+        for i = 1, #worldobjects do
+            local o = worldobjects[i]
+            if o and o.getSquare then
+                local sq = o:getSquare()
+                if sq then return sq end
+            end
+        end
+    end
+    return player:getSquare()
+end
+
 local function OnFillWorldObjectContextMenu(playerNum, context, worldobjects, test)
     if test then return end
     if not context then return end
@@ -431,23 +486,11 @@ local function OnFillWorldObjectContextMenu(playerNum, context, worldobjects, te
     local player = getSpecificPlayer(playerNum)
     if not player then return end
 
+    local square = ClickedSquare(player, worldobjects)
+
     -- Menu de debug: se ofrece antes de cualquier comprobacion de mercado,
     -- porque justamente sirve para crearlo cuando no lo hay.
     if isDebugEnabled and isDebugEnabled() then
-        local square = player:getSquare()
-        if worldobjects then
-            for i = 1, #worldobjects do
-                local o = worldobjects[i]
-                if o and o.getSquare then
-                    local sq = o:getSquare()
-                    if sq then
-                        square = sq
-                        break
-                    end
-                end
-            end
-        end
-
         local parent  = context:addOption(getText("UI_MBM_DebugMenu"), worldobjects, nil)
         local subMenu = context:getNew(context)
         context:addSubMenu(parent, subMenu)
@@ -458,11 +501,20 @@ local function OnFillWorldObjectContextMenu(playerNum, context, worldobjects, te
     local data = MBM.GetData()
     if not MBM.IsMarketOpen(data) then return end
 
+    -- Se busca al mercader DOS veces: alrededor del jugador (es quien tiene que
+    -- estar cerca para comerciar) y alrededor de la casilla pinchada. Lo segundo
+    -- es lo que hace que "clic derecho SOBRE el mercader" funcione como espera
+    -- cualquiera: sin eso, apuntarle desde 5 casillas no ofrecia nada y parecia
+    -- que la opcion no existia.
     local merchant = FindMerchantNear(player:getX(), player:getY(), player:getZ(),
                                       UI.Config.InteractRange)
+    if not merchant and square then
+        merchant = FindMerchantNear(square:getX(), square:getY(), square:getZ(),
+                                    UI.Config.ClickRange)
+    end
     if not merchant then return end
 
-    context:addOption(getText("UI_MBM_ContextTrade"), worldobjects, OnTradeClick, player)
+    context:addOption(getText("UI_MBM_ContextTrade"), worldobjects, OnTradeClick, player, merchant)
 end
 
 -- ---------------------------------------------------------------------------

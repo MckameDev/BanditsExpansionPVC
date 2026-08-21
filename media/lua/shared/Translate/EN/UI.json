@@ -101,6 +101,8 @@
     "UI_MBM_RadioOfferItem": "%1 for %2",
     "UI_MBM_RadioNoOffers": "Shelves are bare today, but drop by anyway.",
     "UI_MBM_RadioSignOff": "Bring cash, no credit here. *crrrsh*",
+    "UI_MBM_RadioOffAir": "No stand today, we're still hauling the goods. Keep this dial handy.",
+    "UI_MBM_RadioOffAirDead": "The stand is closed. They killed our man. We'll be back when we can.",
     "UI_MBM_TownMuldraugh": "Muldraugh",
     "UI_MBM_TownRosewood": "Rosewood",
     "UI_MBM_TownWestPoint": "West Point",

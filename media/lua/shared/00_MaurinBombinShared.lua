@@ -105,6 +105,11 @@ MBM.REASON = {
 -- CONFIGURACION
 -- ---------------------------------------------------------------------------
 MBM.Config = {
+    -- Interruptor maestro del mercado. Lo puede apagar el jugador desde las
+    -- opciones de partida (BEP.Market; ver media/sandbox-options.txt).
+    -- Apagado: no se monta ningun puesto nuevo. La emisora de 88.5 FM sigue
+    -- existiendo en el dial, pero solo emite su identificacion.
+    Enabled             = true,
     Debug               = false,
 
     MoneyItem           = "Base.Money",  -- moneda del mercado (1 item = 1 unidad)
@@ -163,7 +168,7 @@ MBM.Pools = {
             "Base.HandTorch",
             "Base.HandAxe",
             "Base.HuntingKnife",
-            "Base.AlarmClock",
+            "Base.AlarmClock2",
             "Base.SheetPaper2",
             "Base.Notebook",
         },
@@ -181,7 +186,7 @@ MBM.Pools = {
             "Base.Machete",
             "Base.Axe",
             "Base.Antibiotics",
-            "Base.PillsAntibiotics",
+            "Base.AntibioticsBox",
             "Base.Molotov",
             "Base.SmokeBomb",
             "Base.WalkieTalkie4",
@@ -466,23 +471,33 @@ end
 
 -- ---------------------------------------------------------------------------
 -- PACTO CON LOS MUERTOS
--- "Que el mercader sea ignorado por los zombis". No hay un unico interruptor
--- garantizado en la API de B42, asi que se aplica la cascada completa y se
--- devuelve true si al menos una via respondio. La Fase 2 la reaplica en el tick
--- del NPC (barata: son setters, sin instanciar tablas).
+--
+-- QUE PASA DE VERDAD AQUI (dos correcciones sobre la version anterior)
+--   1. setGhostMode NO existe en IsoZombie: esta declarado solo en IsoPlayer.
+--      La llamada iba dentro de un pcall, asi que fallaba en silencio y el
+--      "modo fantasma" nunca se aplico. Se quito.
+--   2. setUseless NO es un interruptor de "no me elijas como objetivo": es la
+--      marca de PRIORIDAD DE ACTUALIZACION del motor (el "tiered zombie
+--      updates" que se ve en el log). De hecho el propio mod base la escribe
+--      en cada tick -- client/BanditUpdate.lua ~400:
+--          bandit:setUseless(gameMode ~= "Multiplayer" or IsForceStationary(b))
+--      o sea que en single player TODOS los bandidos ya son "useless" y
+--      nuestra llamada no aportaba nada.
+--
+-- Entonces, por que los zombis ya ignoran al mercader? Porque un bandido de
+-- este mod ES un IsoZombie (se crea con addZombiesInOutfit), y los zombis no se
+-- atacan entre ellos. No hay nada que desactivar: es gratis por construccion.
+--
+-- Lo que si hay que garantizar es la otra mitad del pacto -- que el MERCADER no
+-- ataque a nadie -- y eso no se hace aqui sino con brain.hostile = false, que
+-- es la bandera que gatea la busqueda de enemigos del mod base
+-- (client/BanditUpdate.lua ~973). Ver MaurinBombinAI.EnforcePact.
+--
+-- Queda solo limpiar el objetivo que pudiera arrastrar del spawn.
 -- ---------------------------------------------------------------------------
 function MBM.MakeIgnoredByZombies(zombie)
     if not zombie then return false end
-    local applied = false
-
-    -- Modo fantasma: el motor deja de considerarlo objetivo valido.
-    if pcall(zombie.setGhostMode, zombie, true) then applied = true end
-    -- Aunque tenga objetivo asignado por inercia, se limpia.
-    pcall(zombie.setTarget, zombie, nil)
-    -- Los zombis "utiles" son los que la IA reparte como objetivo.
-    pcall(zombie.setUseless, zombie, true)
-
-    return applied
+    return pcall(zombie.setTarget, zombie, nil) == true
 end
 
 -- ---------------------------------------------------------------------------

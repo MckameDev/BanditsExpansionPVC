@@ -86,6 +86,36 @@ function PVCCore.OnDead(name, fn)
 end
 
 -- ---------------------------------------------------------------------------
+-- CLANES RESERVADOS
+-- ---------------------------------------------------------------------------
+-- Algunos clanes de este submod NO son bandidos aunque el motor los trate como
+-- tales: el escuadron del MaurinBombin Market es un mercader pacifico con dos
+-- guardias de puesto. Sin esto, TODAS las mecanicas genericas se les aplicaban
+-- igual, con resultados absurdos: el guardia te exigia el equipo (el
+-- Negociador de TacticalQuickWins) y te atacaba si no cumplias, se curaba en
+-- combate, saqueaba cadaveres, tiraba molotovs o fingia rendirse.
+--
+-- Reservar un clan significa: de los modulos registrados, para los bandidos de
+-- ESE clan solo se despacha al modulo dueno. Se aplica igual a update, hit y
+-- dead, asi que basta una linea en el modulo dueno para que quede blindado
+-- entero -- incluidas las mecanicas que se anadan en el futuro.
+local reservedClans = {}   -- [cid] = nombre del modulo dueno
+
+function PVCCore.ReserveClan(cid, ownerName)
+    if type(cid) ~= "string" or type(ownerName) ~= "string" then return false end
+    reservedClans[cid] = ownerName
+    print("[PVCCore] Clan reservado para '" .. ownerName .. "': " .. cid)
+    return true
+end
+
+-- Dueno del clan al que pertenece el brain, o nil si no esta reservado.
+local function ClanOwner(brain)
+    local cid = brain and brain.cid
+    if not cid then return nil end
+    return reservedClans[cid]
+end
+
+-- ---------------------------------------------------------------------------
 -- Circuit breaker compartido: si un modulo revienta repetidamente se
 -- desactiva solo y los demas siguen funcionando.
 -- ---------------------------------------------------------------------------
@@ -349,9 +379,11 @@ local function OnZombieUpdate(zombie)
     local dist2 = dx * dx + dy * dy
     if dist2 > PVCCore.Config.MaxDistanceSq then return end
 
+    local owner = ClanOwner(brain)
+
     for i = 1, updateCount do
         local h = updateFns[i]
-        if not disabled[h.name] then
+        if not disabled[h.name] and (not owner or h.name == owner) then
             local ok, err = pcall(h.fn, zombie, brain, id, now, dist2, player)
             if not ok then Report(h.name, err) end
         end
@@ -367,9 +399,11 @@ local function OnHitZombie(zombie, attacker, bodyPartType, handWeapon)
     local id = brain.id
     if not id then return end
 
+    local owner = ClanOwner(brain)
+
     for i = 1, hitCount do
         local h = hitFns[i]
-        if not disabled[h.name] then
+        if not disabled[h.name] and (not owner or h.name == owner) then
             local ok, err = pcall(h.fn, zombie, brain, id, attacker, bodyPartType, handWeapon)
             if not ok then Report(h.name, err) end
         end
@@ -394,9 +428,11 @@ local function OnZombieDead(zombie)
     end
     if not brain or not id then return end
 
+    local owner = ClanOwner(brain)
+
     for i = 1, deadCount do
         local h = deadFns[i]
-        if not disabled[h.name] then
+        if not disabled[h.name] and (not owner or h.name == owner) then
             local ok, err = pcall(h.fn, zombie, brain, id)
             if not ok then Report(h.name, err) end
         end
